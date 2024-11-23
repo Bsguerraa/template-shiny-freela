@@ -1,0 +1,26 @@
+UNIT_ID,DESCRIPTION,DESCRIPTION_EXTRA
+EMG,Emergência/Pronto-Socorro,Atendimento imediato para casos de urgência e emergência médica
+UTI,UTI (Unidade de Terapia Intensiva),Cuidados intensivos para pacientes em estado grave
+CTR,Centro Cirúrgico,Espaço dedicado à realização de procedimentos cirúrgicos
+ENF,Enfermaria,Alojamento para internação de pacientes que não necessitam de cuidados intensivos
+OBST,Centro Obstétrico/Maternidade,Atendimento especializado para gestantes e partos
+PED,Pediatria,Atendimento e cuidados de saúde para crianças e adolescentes
+ONC,Oncologia,Tratamento de pacientes com câncer
+CAR,Cardiologia,Setor especializado no diagnóstico e tratamento de doenças cardíacas
+ORT,Ortopedia,Cuidados com lesões e condições musculoesqueléticas
+IMG,Radiologia/Imagem,Realização de exames de imagem como raio-X tomografia e ressonância
+LAB,Laboratório de Análises Clínicas,Análises de amostras biológicas para diagnóstico
+FIS,Fisioterapia e Reabilitação,Tratamento para recuperação física e motora
+NEF,Nefrologia/Diálise,Cuidados com pacientes com doenças renais e tratamento de diálise
+PSI,Psicologia,Apoio psicológico e acompanhamento de saúde mental
+PSIQ,Psiquiatria,Atendimento especializado para pacientes com transtornos mentais
+OFT,Oftalmologia,Diagnóstico e tratamento de problemas de visão
+DER,Dermatologia,Cuidados e tratamentos para doenças de pele
+FARM,Farmácia Hospitalar,Distribuição e controle de medicamentos para pacientes internados
+DIAG,Centro de Diagnóstico,Espaço para exames e diagnósticos médicos diversos
+HEM,Hematologia,Tratamento e diagnóstico de doenças sanguíneas
+GER,Geriatria,Cuidados e acompanhamento especializado para idosos
+NEU,Neurologia,Tratamento de doenças do sistema nervoso
+QUEI,Unidade de Queimados,Atendimento especializado para pacientes com queimaduras
+CCI,Centro de Controle de Infecções,Monitoramento e prevenção de infecções hospitalares
+ADM,Administração Hospitalar,Gestão e coordenação administrativa do hospital

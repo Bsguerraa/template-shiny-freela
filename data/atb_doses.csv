@@ -1,0 +1,51 @@
+﻿antibiotico;apresentacao;DOSAGE_VALUE_ORIGINAL;DOSAGE_UNIT
+Amicacina;FR AMP 100 mg;100;mg
+Amicacina;FR AMP 250 mg;250;mg
+Amicacina;FR AMP 500 mg;500;mg
+Amicacina;FR AMP 1 g;1;g
+Ampicilina-sulbactam (base sulbactam);FR AMP 1,5G;1.5;g
+Ampicilina-sulbactam (base sulbactam);FR AMP 3G;3;g
+Cefepima;FR AMP 1G;1;g
+Cefepima;FR AMP 2G;2;g
+Cefotaxima;FR AMP 1G;1;g
+Ceftazidima;FR AMP 1G;1;g
+Ceftazidima-avibactam (base ceftazidima);FR AMP 2,5G;2.5;g
+Ceftolozana-tazobactam (base ceftolozana);FR AMP 1,5G;1.5;g
+Ceftriaxone;FR AMP 1G;1;g
+Ciprofloxacina;CP 250 MG;250;mg
+Ciprofloxacina;CP 500 MG;250;mg
+Ciprofloxacina;FR AMP 200 MG;200;mg
+Ciprofloxacina;FR AMP 400 MG;400;mg
+Ertapenem;FR AMP 1G;1;g
+Imipenem;FR AMP 250 MG;250;mg
+Imipenem;FR AMP 500 MG;500;mg
+Levofloxacina;FR AMP 250 MG;250;mg
+Levofloxacina;FR AMP 500 MG;500;mg
+Levofloxacina;CP 250 MG;250;mg
+Levofloxacina;CP 500 MG;500;mg
+Linezolida;BOLSA 600 MG;600;mg
+Linezolida;CP 600 MG;600;mg
+Meropenem;FR AMP 500 MG;500;mg
+Meropenem;FR AMP 1G;1;g
+Moxifloxacino;BOLSA 400 MG;400;mg
+Moxifloxacino;CP 400 MG;400;mg
+Piperacilina-tazobactam (base piperacilina);FR AMP 4,5G;4.5;g
+Piperacilina-tazobactam (base piperacilina);FR AMP 2,25G;2.25;g
+Sulfato de Polimixina B;FR AMP 500.000 UI (50 MG);50;mg
+Sulfato de Polimixina E;FR AMP 1.000.000 UI (33 MG);33;mg
+Sulfato de Polimixina E;FR AMP 4.500.000 UI (150 MG);150;mg
+Teicoplanina;FR AMP 200 MG;200;mg
+Teicoplanina;FR AMP 400 MG;400;mg
+Vancomicina;FR AMP 500 MG;500;mg
+Vancomicina;FR AMP 1G;1;g
+Daptomicina;FR AMP 500 MG;500;mg
+Tigeciclina;FR AMP 50 MG;50;mg
+Anfotericina B;FR AMP 50MG;50;mg
+Anfotericina B Lipossomal;FR AMP 50MG;50;mg
+Anfotericina B Lipossomal;FR AMP 100MG;100;mg
+Anidulafungina;FR AMP 100MG;100;mg
+Caspofungina;FR AMP 50MG;50;mg
+Caspofungina;FR AMP 70MG;70;mg
+Fluconazol;FR 200MG;200;mg
+Micafungina;FR AMP 100MG;100;mg
+Voriconazol;FR AMP 200MG;200;mg
