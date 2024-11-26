@@ -1,3 +1,5 @@
+library(scales)
+
 substituir_pontos_por_virgulas <- function(valor) {
   # Verificar se o valor contém pontos e vírgulas
   if (grepl("\\.", valor) && grepl(",", valor)) {
@@ -124,3 +126,17 @@ color_map <- c("R" = "red",
 conditional <- function(condition, success) {
   if (condition) success else TRUE
 }
+
+
+format_currency_br <- label_number(
+  big.mark = ".",       # Thousand separator
+  decimal.mark = ",",   # Decimal separator
+  prefix = "R$ ",        # Currency symbol,
+  accuracy  = 0.01
+)
+
+format_currency_no_prefix_br <- label_number(
+  big.mark = ".",       # Thousand separator
+  decimal.mark = ",",   # Decimal separator
+  accuracy  = 0.01
+)

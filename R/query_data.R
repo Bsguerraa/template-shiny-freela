@@ -1,70 +1,35 @@
-# library(DBI)
-# library(noctua)
-# library(stringr)
-# 
-# log_message <- function(message) {
-#   message(paste(Sys.time(), "-", message))
-# }
-# 
-# print_env_vars <- function() {
-#   log_message("Imprimindo variáveis de ambiente...")
-#   db_name <- Sys.getenv("DB_NAME")
-#   db_host <- Sys.getenv("DB_HOST")
-#   db_port <- Sys.getenv("DB_PORT")
-#   db_user <- Sys.getenv("DB_USER")
-#   db_password <- Sys.getenv("DB_PASSWORD")
-#   
-#   log_message(paste("DB_NAME:", db_name))
-#   log_message(paste("DB_HOST:", db_host))
-#   log_message(paste("DB_PORT:", db_port))
-#   log_message(paste("DB_USER:", db_user))
-# }
-# 
-# print_env_vars()
-# 
-# log_message("Iniciando a conexão com o banco de dados...")
-# 
-# con <- tryCatch({
-#   dbConnect(RPostgres::Postgres(),
-#             dbname = Sys.getenv("DB_NAME"),
-#             host = Sys.getenv("DB_HOST"),
-#             port = Sys.getenv("DB_PORT"),
-#             user = Sys.getenv("DB_USER"),
-#             password = Sys.getenv("DB_PASSWORD"))
-# }, error = function(e) {
-#   log_message(paste("Erro ao conectar ao banco de dados:", e$message))
-#   stop(e)
-# })
-# 
-# 
-# log_message("Conexão com o banco de dados estabelecida com sucesso.")
+require(dplyr)
 
-# EXEMPLO DE CONEXÃO QUE FAZEMOS COM O POSTDEGREE
-# query_df_sensibilidade <- function() {
-#   df <- dbGetQuery(con, "SELECT 
-#                    id_do_paciente,
-#                    amostra,
-#                    data_de_coleta,
-#                    mes,
-#                    ano,
-#                    microorganismo_shiny as microorganismo,
-#                    servico_hospitalar_shiny as servico_hospitalar,
-#                    tipo_da_amostra_shiny as tipo_da_amostra,
-#                    n_do_isolado,
-#                    morfologia_shiny as morfologia,
-#                    antibiotico_shiny as antibiotico,
-#                    sir_final_shiny as sir_final,
-#                    mic_cumulativo
-#                    FROM 
-#                    public.perfil_sensibilidade")
-#   return(df)
-# }
+gestao_isolamento_tbl_csv <- read.csv(file = "data/gestao_isolamento_tbl.csv")
+setores_hospitalares <- read.csv("data/setor_hospitalar.csv")
+
+aceitabilidade_tbl <- read_csv(file = "data/aceitabilidade_tbl.csv")
+
+aceitabilidade_date_range <- range(c(range(aceitabilidade_tbl$ALERT_DATE, na.rm = TRUE),
+                                     range(aceitabilidade_tbl$ALERT_ADHERENCE_DATE, na.rm = TRUE)))
+
+gestao_isolamento_tbl <- gestao_isolamento_tbl_csv %>%
+  mutate(
+    ADMISSION_DATE = as.POSIXct(ADMISSION_DATE, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+    collection_date_time = as.POSIXct(collection_date_time, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+    result_status_date_time = as.POSIXct(result_status_date_time, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+    RELEASE_DATE = as.POSIXct(RELEASE_DATE, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+    dif = as.numeric(difftime(result_status_date_time, collection_date_time, units = "hours")),
+    month = as.Date(floor_date(collection_date_time, unit = "month"))) %>%
+  left_join(setores_hospitalares,  by = "UNIT_ID")
+
+gestao_isolamento_setores_list <- c("Todos", sort(unique(gestao_isolamento_tbl$DESCRIPTION)))
+
+gestao_isolamento_range <- as.Date(range(c(range(gestao_isolamento_tbl$ADMISSION_DATE),
+                                           range(gestao_isolamento_tbl$collection_date_time),
+                                           range(gestao_isolamento_tbl$result_status_date_time),
+                                           range(gestao_isolamento_tbl$RELEASE_DATE))))
 
 
-query_dados_simulados <- function() {
-  
-  df <- read.csv("SEUS_DADOS_SIMULADOS.csv")
-  
-  return(df)
-  
-}
+antimicrob_tbl_final <- read_csv(file = "data/antimicrob_tbl.csv")
+
+antimicrob_tbl_codes <- read.csv(file = "data/antimicrob_tbl_codes.csv")
+
+antimicrob_date_range <- range(antimicrob_tbl_final$THERAPY_START_DATE, na.rm = TRUE)
+
+antimicrob_setores_list <- sort(unique(antimicrob_tbl_final$DESCRIPTION))
