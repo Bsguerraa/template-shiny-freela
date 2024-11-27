@@ -1,0 +1,34 @@
+MEDICATION_NAME,MEDICATION_CLASS_CODE
+Amicacina,J01GB06
+Ampicilina-sulbactam (Base Sulbactam),J01CR01
+Cefepima,J01DE01
+Cefotaxima,J01DD01
+Ceftazidima,J01DD02
+Ceftazidima-avibactam,J01DD52
+Ceftolozana-tazobactam,J01DI54
+Ceftriaxone,J01DD04
+Ciprofloxacina oral,J01MA02
+Ciprofloxacina parenteral,J01MA02
+Ertapenem,J01DH03
+Imipenem,J01DH51
+Levofloxacina oral,J01MA12
+Levofloxacina parenteral,J01MA12
+Linezolida oral,J01XX08
+Linezolida parenteral,J01XX08
+Meropenem,J01DH02
+Moxifloxacino oral,J01MA14
+Moxifloxacino parenteral,J01MA14
+Piperacilina-tazobactam (Base Piperacilina),J01CR05
+Sulfato de Polimixina B,J01XB02
+Sulfato de Polimixina E,J01XB01
+Teicoplanina,J01XA02
+Vancomicina,J01XA01
+Daptomicina,J01XX09
+Tigeciclina,J01AA12
+Anfotericina B,J02AA01
+Anfotericina B Lipossomal,J02AA01
+Anidulafungina,J02AX06
+Caspofungina,J02AX04
+Fluconazol,J02AC01
+Micafungina,J02AX05
+Voriconazol,J02AC03
