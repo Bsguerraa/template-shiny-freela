@@ -18,6 +18,7 @@ library(RColorBrewer)
 library(xts)
 library(tidyverse)
 library(dygraphs)
+library(viridis)
 
 source("R/utils.R")
 source("R/query_data.R")
@@ -53,7 +54,7 @@ ui <- shiny::conditionalPanel(
       
       conditionalPanel(
         "input.nav === 'Gestão de Isolamento'",
-        ### COLOQUE AQUI OS FILTROS DA PAGINA 1 ## asd
+        ### COLOQUE AQUI OS FILTROS DA PAGINA 1 ##
          fluidRow(
            
            selectInput(
@@ -112,6 +113,50 @@ ui <- shiny::conditionalPanel(
                                      noneResultsText = "SEM CORRESPONDÊNCIAS",
                                      selectedTextFormat = "count > 3",
                                      countSelectedText = "{0} ITENS SELECIONADOS")
+           ),
+           
+           column(1),
+           
+           pickerInput(
+             inputId = "isolamento_microorganism",
+             label = "Microorganismo",
+             choices = sort(unique(gestao_isolamento_tbl$MICROORGANISM_ID)),
+             multiple = TRUE,
+             selected = NULL,
+             options = pickerOptions(container = "body",
+                                     title = "SELECIONE",
+                                     actionsBox = TRUE,
+                                     liveSearch = TRUE,
+                                     selectAllText = "SELECIONAR TODOS",
+                                     deselectAllText = "LIMPAR TODOS",
+                                     noneSelectedText= "SELECIONE",
+                                     noneResultsText = "SEM CORRESPONDÊNCIAS",
+                                     selectedTextFormat = "count > 3",
+                                     countSelectedText = "{0} ITENS SELECIONADOS")
+           ),
+           
+           radioGroupButtons(
+             inputId = "gi_button_time_setting",
+             label = "Intervalo de tempo:",
+             choices = c("Mensal", 
+                         "Semanal"),
+             individual = TRUE,
+             size = "sm",
+             selected = "Mensal",
+             direction = "horizontal",
+             status = "light"
+           ),
+           
+           radioGroupButtons(
+             inputId = "gi_button_sector",
+             label = "Setores:",
+             choices = c("Agregados", 
+                         "Separados"),
+             individual = TRUE,
+             size = "sm",
+             selected = "Agregados",
+             direction = "horizontal",
+             status = "light"
            ),
            
            column(5, actionButton("reset_btn_gi", "Reset", width = '125%')),
@@ -268,7 +313,7 @@ ui <- shiny::conditionalPanel(
             inputId = "aceitabilidade_adherence",
             label = "Resposta à intervenção",
             choices = c("Todas" = "all", "Aceitas" = TRUE, "Rejeitadas" = FALSE),
-            selected = "Todas",
+            selected = "Todas"
           ),
           
           column(1),
@@ -481,41 +526,124 @@ ui <- shiny::conditionalPanel(
     
     nav_panel("Gestão de Isolamento",
               
-              navset_card_underline(
-                title = "Tempo entre Coleta e Resultado (Eficiência BDmax)",
-                # Panel with plot ----
-                nav_panel("Opção A", dygraphOutput("plot1a")),
+              layout_column_wrap(
+                width = 1/3,
+                height = 120,
                 
-                nav_panel("Opção B", 
-                          
-                          card(
-                            height = 450,
-                            max_height = 600,
-                            min_height = 350,
-                            full_screen = TRUE,
-                            layout_sidebar(
-                              fillable = TRUE,
-                              sidebar = sidebar(
-                                width = 140,
-                                open = "closed",
-                                radioGroupButtons(
-                                  inputId = "gi_button_sector",
-                                  label = "Visualização dos Setores Hospitalares",
-                                  choices = c("Agregado", 
-                                              "Separados"),
-                                  size = "sm",
-                                  selected = "Agregado",
-                                  direction = "vertical"
-                                )
-                              ),
-                              plotlyOutput("plot1b")
-                            )
-                          )
-                          
-                          ),
+                value_box(
+                  title = "Economia Total do Giro de Leito de Isolamento",
+                  value = textOutput("saving_giro_total_value"),
+                  showcase = bsicons::bs_icon("cash-coin"),
+                  theme = value_box_theme(bg = "white", fg = "#0B538E"),
+                  class = "border"
+                ),
                 
-                nav_panel("Opção C", plotlyOutput("plot1c"))
-              )),
+                value_box(
+                  title = "Taxa de Rotatividade de Leitos",
+                  value = textOutput("saving_giro_tx_rotatividade_value"),
+                  showcase = bsicons::bs_icon("file-medical"),
+                  theme = value_box_theme(bg = "white", fg = "#0B538E"),
+                  class = "border"
+                ),
+                
+                value_box(
+                  title = "Tempo Médio de Ocupação do Leito de Isolamento",
+                  value = textOutput("saving_tm_ocupacao_leito_value"),
+                  showcase = bsicons::bs_icon("hospital"),
+                  theme = value_box_theme(bg = "white", fg = "#0B538E"),
+                  class = "border"
+                )
+              ),
+              
+             navset_card_underline(
+                title = "Eficiência BDMáx",
+                
+              nav_panel("Tempo entre Coleta e Resultado",
+              
+              card(
+                height = 450,
+                full_screen = TRUE,
+                uiOutput("gi_dif_amostra_result_plot")
+              )
+              ),
+              
+              nav_panel("Tempo entre Resultado e Isolamento/Liberação",
+                        card(
+                          height = 450,
+                          full_screen = TRUE,
+                          uiOutput("gi_dif_res_amostra_result_plot")
+                        )
+                        
+              )
+              ),
+              
+              card(
+                height = 450,
+                max_height = 600,
+                min_height = 350,
+                full_screen = TRUE,
+                card_header(
+                  # Usando flexbox para alinhar o título e o ícone
+                  div(
+                    style = "display: flex; justify-content: space-between; align-items: center;",
+                    span("Economia pelo Giro de Leito de Isolamento", style = "flex: 1; text-align: center;"),
+                    tooltip(
+                      bsicons::bs_icon("info-circle"),
+                      "A Economia do Giro de Leito de Isolamento é estimada assumindo uma média de ocupação anterior de 5 dias, subtraída pelo tempo entre o resultado do exame e a liberação do leito, e multiplicada pelo custo diário de internação",
+                      id = "tooltip",
+                      placement = "top"
+                    )
+                  )
+                ),
+                
+                uiOutput("saving_cost_ocupacao_leito")
+              ),
+               
+             card(
+               height = 450,
+               max_height = 600,
+               min_height = 350,
+               full_screen = TRUE,
+               card_header(
+                 # Usando flexbox para alinhar o título e o ícone
+                 div(
+                   style = "display: flex; justify-content: space-between; align-items: center;",
+                   span("Taxa de Rotatividade de Leitos", style = "flex: 1; text-align: center;"),
+                   tooltip(
+                     bsicons::bs_icon("info-circle"),
+                     "A taxa é calculada pela razão entre a o nº de Pacientes Transferidos ou Liberados do Isolamento pelo Total de Leitos de Isolamento Ocupados, multiplicado por 100",
+                     id = "tooltip",
+                     placement = "top"
+                   )
+                 )
+               ),
+               
+               uiOutput("tx_rotatividade_ocupacao_leito")
+             ),
+             
+             card(
+               height = 450,
+               max_height = 600,
+               min_height = 350,
+               full_screen = TRUE,
+
+               card_header(
+                 # Usando flexbox para alinhar o título e o ícone
+                 div(
+                   style = "display: flex; justify-content: space-between; align-items: center;",
+                   span("Tempo Médio de Ocupação do Leito de Isolamento", style = "flex: 1; text-align: center;"),
+                   tooltip(
+                     bsicons::bs_icon("info-circle"),
+                     "O Tempo Médio é calculado pela razão entre o Total de Dias de Ocupação de Leitos de Isolamento pelo Número Total Saídas do Isolamento no período. Considera-se somente pacientes que iniciaram a internação e realizaram a saída do isolamento dentro do período selecionado nos filtros. A visualização deste gráfico é feita sempre pela data de entrada do paciente, mesmo que outra data de filtro seja selecionada.",
+                     id = "tooltip",
+                     placement = "top"
+                   )
+                 )
+               ),
+               
+               uiOutput("tm_ocupacao_leito_plot")
+             )
+              ),
              # mod_p1_ui("pag_1")),
     
     nav_panel("Consumo de antimicrobianos",
@@ -735,7 +863,7 @@ ui <- shiny::conditionalPanel(
                       direction = "vertical"
                     )
                   ),
-                  uiOutput("plot_aceitabilidade_n_dynamic")
+                 uiOutput("plot_aceitabilidade_n_dynamic"),
                 )
               ), # card    
               
@@ -1030,7 +1158,10 @@ server <- function(input, output, session) {
     gestao_isolamento_tipo_data = "coleta",
     gestao_isolamento_data = gestao_isolamento_range,
     isolamento_setor = NULL,
-    isolamento_medico_id = NULL
+    isolamento_medico_id = NULL,
+    isolamento_microorganism = NULL,
+    gi_button_sector = 'Agregados',
+    gi_button_time_setting = 'Mensal'
   )
   
   # Update reactive values when the button is pressed
@@ -1039,6 +1170,9 @@ server <- function(input, output, session) {
     filter_gi$gestao_isolamento_data <- input$gestao_isolamento_data
     filter_gi$isolamento_setor <- input$isolamento_setor
     filter_gi$isolamento_medico_id <- input$isolamento_medico_id
+    filter_gi$isolamento_microorganism <- input$isolamento_microorganism
+    filter_gi$gi_button_sector <- input$gi_button_sector
+    filter_gi$gi_button_time_setting <- input$gi_button_time_setting
   })
   
   ## Atualização de Botões ##
@@ -1053,7 +1187,9 @@ server <- function(input, output, session) {
                          max = gestao_isolamento_range[2])
     updatePickerInput(session, "isolamento_setor", selected = "")
     updatePickerInput(session, "isolamento_medico_id", selected = "")
-  
+    updatePickerInput(session, "isolamento_microorganism", selected = "")
+    updateRadioGroupButtons(session, "gi_button_sector", selected = 'Agregados')
+    updateRadioGroupButtons(session, "gi_button_time_setting", selected = 'Mensal')
   })
   
   # Pag 2
@@ -1180,6 +1316,62 @@ server <- function(input, output, session) {
                          max = default_last_date)
   })
   
+  # PRD 1
+  
+  gi_x_label_month <- reactive({
+    switch(filter_gi$gestao_isolamento_tipo_data,
+           "entrada" = "Mês de entrada do paciente",
+           "coleta" = "Mês de coleta do exame",
+           "resultado" = "Mês de resultado do exame",
+           "release" = "Mês de transferência ou liberação")
+  })
+  
+  gi_x_label_week <- reactive({
+    switch(filter_gi$gestao_isolamento_tipo_data,
+           "entrada" = "Semana de entrada do paciente",
+           "coleta" = "Semana de coleta do exame",
+           "resultado" = "Semana de resultado do exame",
+           "release" = "Semana de transferência ou liberação")
+  })
+  
+  x_range_gi_month <- reactive({ 
+    if (filter_gi$gestao_isolamento_tipo_data == "entrada") {
+      x_range_gi_month <- as.Date(floor_date(range(gi_tbl_prev_date()$ADMISSION_DATE), unit = "month"))
+    }
+    
+    if (filter_gi$gestao_isolamento_tipo_data == "coleta") {
+      x_range_gi_month <- as.Date(floor_date(range(gi_tbl_prev_date()$collection_date_time), unit = "month"))
+    }
+    
+    if (filter_gi$gestao_isolamento_tipo_data == "resultado") {
+      x_range_gi_month <- as.Date(floor_date(range(gi_tbl_prev_date()$result_status_date_time), unit = "month"))
+    }
+    
+    if (filter_gi$gestao_isolamento_tipo_data == "release") {
+      x_range_gi_month <- as.Date(floor_date(range(gi_tbl_prev_date()$RELEASE_DATE), unit = "month"))
+    }
+    x_range_gi_month
+  })
+  
+  x_range_gi_week <- reactive({
+    if (filter_gi$gestao_isolamento_tipo_data == "entrada") {
+      x_range_gi_week <- as.Date(floor_date(range(gi_tbl_prev_date()$ADMISSION_DATE), unit = "week"))
+    }
+    
+    if (filter_gi$gestao_isolamento_tipo_data == "coleta") {
+      x_range_gi_week <- as.Date(floor_date(range(gi_tbl_prev_date()$collection_date_time), unit = "week"))
+    }
+    
+    if (filter_gi$gestao_isolamento_tipo_data == "resultado") {
+      x_range_gi_week <- as.Date(floor_date(range(gi_tbl_prev_date()$result_status_date_time), unit = "week"))
+    }
+    
+    if (filter_gi$gestao_isolamento_tipo_data == "release") {
+      x_range_gi_week <- as.Date(floor_date(range(gi_tbl_prev_date()$RELEASE_DATE), unit = "week"))
+    }
+    x_range_gi_week
+  })
+  
   gi_tbl_prev_date <- reactive({
     
     # Filtro por tipo de data
@@ -1223,6 +1415,7 @@ server <- function(input, output, session) {
           dplyr::filter(DESCRIPTION %in% filter_gi$isolamento_setor)
     }
     
+      # Filtro por médico
     if (is.null(filter_gi$isolamento_medico_id)) {
       gestao_isolamento_tbl_filter_medico <- gestao_isolamento_tbl_filter_setor
     } else {
@@ -1230,274 +1423,1871 @@ server <- function(input, output, session) {
         dplyr::filter(PRACTITIONER_ID %in% filter_gi$isolamento_medico_id)
     }
     
+    # Filtro por microorganismo
+    if (is.null(filter_gi$isolamento_microorganism)) {
+      gestao_isolamento_tbl_filter_micro <- gestao_isolamento_tbl_filter_medico
+    } else {
+      gestao_isolamento_tbl_filter_micro <- gestao_isolamento_tbl_filter_medico %>%
+        dplyr::filter(MICROORGANISM_ID %in% filter_gi$isolamento_microorganism)
+    }
+
     # Calcular horas e mês de acordo com o tipo de data escolhida
     
     if (filter_gi$gestao_isolamento_tipo_data == "entrada") {
-      gestao_isolamento_tbl_output <- gestao_isolamento_tbl_filter_medico %>%
+      gestao_isolamento_tbl_output <- gestao_isolamento_tbl_filter_micro %>%
         mutate(Horas = as.numeric(difftime(result_status_date_time, collection_date_time, units = "hours")),
-               month = as.Date(floor_date(ADMISSION_DATE, unit = "month")))
+               Horas_res = as.numeric(difftime(RELEASE_DATE, result_status_date_time, units = "hours")),
+               month = as.Date(floor_date(ADMISSION_DATE, unit = "month")),
+               week = as.Date(floor_date(ADMISSION_DATE, unit = "week")))
     }
     
     if (filter_gi$gestao_isolamento_tipo_data == "coleta") {
-      gestao_isolamento_tbl_output <- gestao_isolamento_tbl_filter_medico %>%
+      gestao_isolamento_tbl_output <- gestao_isolamento_tbl_filter_micro %>%
         mutate(Horas = as.numeric(difftime(result_status_date_time, collection_date_time, units = "hours")),
-               month = as.Date(floor_date(collection_date_time, unit = "month")))
+               Horas_res = as.numeric(difftime(RELEASE_DATE, result_status_date_time, units = "hours")),
+               month = as.Date(floor_date(collection_date_time, unit = "month")),
+               week = as.Date(floor_date(collection_date_time, unit = "week")))
     }
     
     if (filter_gi$gestao_isolamento_tipo_data == "resultado") {
-      gestao_isolamento_tbl_output <- gestao_isolamento_tbl_filter_medico %>%
+      gestao_isolamento_tbl_output <- gestao_isolamento_tbl_filter_micro %>%
         mutate(Horas = as.numeric(difftime(result_status_date_time, collection_date_time, units = "hours")),
-               month = as.Date(floor_date(result_status_date_time, unit = "month")))
+               Horas_res = as.numeric(difftime(RELEASE_DATE, result_status_date_time, units = "hours")),
+               month = as.Date(floor_date(result_status_date_time, unit = "month")),
+               week = as.Date(floor_date(result_status_date_time, unit = "week")))
     }
     
     if (filter_gi$gestao_isolamento_tipo_data == "release") {
-      gestao_isolamento_tbl_output <- gestao_isolamento_tbl_filter_medico %>%
+      gestao_isolamento_tbl_output <- gestao_isolamento_tbl_filter_micro %>%
         mutate(Horas = as.numeric(difftime(result_status_date_time, collection_date_time, units = "hours")),
-               month = as.Date(floor_date(RELEASE_DATE, unit = "month")))
+               Horas_res = as.numeric(difftime(RELEASE_DATE, result_status_date_time, units = "hours")),
+               month = as.Date(floor_date(RELEASE_DATE, unit = "month")),
+               week = as.Date(floor_date(RELEASE_DATE, unit = "week")))
     }
     
     gestao_isolamento_tbl_output
 
   })
   
-  gi_tbl <- reactive({
+  gi_tbl_month <- reactive({
+    
+    if(nrow(gi_tbl_prev())==0) {
+      data.frame(month = c(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'month'), 
+                           floor_date(filter_gi$gestao_isolamento_data[2], unit = 'month')),
+                 Horas = NA,
+                 Horas_res = NA)
+    } else {
+    
     gi_tbl_prev() %>% 
       mutate(Horas = as.numeric(difftime(result_status_date_time, collection_date_time, units = "hours")),
+             Horas_res = as.numeric(difftime(RELEASE_DATE, result_status_date_time, units = "hours")),
              month = as.Date(floor_date(collection_date_time, unit = "month"))) |>
       group_by(month) |>
-      summarise(Horas = mean(Horas, na.rm = TRUE)) %>%
-      select(month, Horas) %>%
-      arrange(month)
+      summarise(Horas = mean(Horas, na.rm = TRUE),
+                Horas_res = mean(Horas_res, na.rm = TRUE)) %>%
+      select(month, Horas, Horas_res) %>%
+      arrange(month)  %>%
+        complete(month = seq(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'month'), 
+                             floor_date(filter_gi$gestao_isolamento_data[2], unit = 'month'), by = "month"),
+                 fill = list(Horas = 0, Horas_res = 0))
+    }
     })
+  
+  gi_tbl_week <- reactive({
+    
+    if(nrow(gi_tbl_prev())==0) {
+      data.frame(week = c(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'week'), 
+                          floor_date(filter_gi$gestao_isolamento_data[2], unit = 'week')),
+                 Horas = NA,
+                 Horas_res = NA)
+    } else {
+      
+      gi_tbl_prev() %>% 
+        mutate(Horas = as.numeric(difftime(result_status_date_time, collection_date_time, units = "hours")),
+               Horas_res = as.numeric(difftime(RELEASE_DATE, result_status_date_time, units = "hours")),
+               week = as.Date(floor_date(collection_date_time, unit = "week"))) |>
+        group_by(week) |>
+        summarise(Horas = mean(Horas, na.rm = TRUE),
+                  Horas_res = mean(Horas_res, na.rm = TRUE)) %>%
+        select(week, Horas, Horas_res) %>%
+        arrange(week)  %>%
+        complete(week = seq(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'week'), 
+                            floor_date(filter_gi$gestao_isolamento_data[2], unit = 'week'), by = "week"),
+                 fill = list(Horas = 0, Horas_res = 0))
+    }
+  })
   
   gi_tbl_sector <- reactive({
     
     if(nrow(gi_tbl_prev())==0) {
-      data.frame(month = range(gestao_isolamento_tbl$month),
-                                         Horas = 0,
+      data.frame(month = c(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'month'), 
+                           floor_date(filter_gi$gestao_isolamento_data[2], unit = 'month')),
+                                         Horas = NA,
+                                         Horas_res = NA,
                                          DESCRIPTION = NA)
     } else {
 
     gi_tbl_prev() %>%
         mutate(Horas = as.numeric(difftime(result_status_date_time, collection_date_time, units = "hours")),
+               Horas_res = as.numeric(difftime(RELEASE_DATE, result_status_date_time, units = "hours")),
                month = as.Date(floor_date(collection_date_time, unit = "month"))) |>
         group_by(month, DESCRIPTION) |>
-        reframe(Horas = mean(Horas, na.rm = TRUE)) %>%
-        select(month, DESCRIPTION, Horas) %>%
+        reframe(Horas = mean(Horas, na.rm = TRUE),
+                Horas_res = mean(Horas_res, na.rm = TRUE)) %>%
+        select(month, DESCRIPTION, Horas, Horas_res) %>%
         arrange(DESCRIPTION, month) %>%
         mutate(DESCRIPTION = factor(DESCRIPTION)) %>%
         complete(DESCRIPTION,
-                 month = seq(min(month), max(month), by = "month"),
-                 fill = list(Horas = 0))
+                 month = seq(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'month'), 
+                             floor_date(filter_gi$gestao_isolamento_data[2], unit = 'month'), by = "month"),
+                 fill = list(Horas = 0, Horas_res = 0))
     }
   })
   
-  # Diferença máxima de tempo na gestão de isolamento (para limite do eixo y)
-  max_dif_isolamento <- gestao_isolamento_tbl %>% 
+  gi_tbl_sector_week <- reactive({
+    
+    if(nrow(gi_tbl_prev())==0) {
+      data.frame(week = c(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'week'), 
+                          floor_date(filter_gi$gestao_isolamento_data[2], unit = 'week')),
+                 Horas = NA,
+                 Horas_res = NA,
+                 DESCRIPTION = NA)
+    } else {
+      
+      gi_tbl_prev() %>%
+        mutate(Horas = as.numeric(difftime(result_status_date_time, collection_date_time, units = "hours")),
+               Horas_res = as.numeric(difftime(RELEASE_DATE, result_status_date_time, units = "hours")),
+               week = as.Date(floor_date(collection_date_time, unit = "week"))) |>
+        group_by(week, DESCRIPTION) |>
+        reframe(Horas = mean(Horas, na.rm = TRUE),
+                Horas_res = mean(Horas_res, na.rm = TRUE)) %>%
+        select(week, DESCRIPTION, Horas, Horas_res) %>%
+        arrange(DESCRIPTION, week) %>%
+        mutate(DESCRIPTION = factor(DESCRIPTION)) %>%
+        complete(DESCRIPTION,
+                 week = seq(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'week'), 
+                            floor_date(filter_gi$gestao_isolamento_data[2], unit = 'week'), by = "week"),
+                 fill = list(Horas = 0, Horas_res = 0))
+    }
+  })
+  
+  # Diferença máxima de tempo na gestão de isolamento (para limite do eixo y) por mês
+  max_dif_isolamento_month <- gestao_isolamento_tbl %>% 
     mutate(Horas = as.numeric(difftime(result_status_date_time, collection_date_time, units = "hours")),
            month = as.Date(floor_date(collection_date_time, unit = "month"))) |>
     group_by(month, DESCRIPTION) |>
-    summarise(Horas = mean(Horas)) %>%
+    summarise(Horas = mean(Horas, na.rm = T)) %>%
     ungroup() %>%
     filter(Horas == max(Horas, na.rm = TRUE)) %>%
     select(Horas) %>%
     mutate(Horas = Horas*1.2)
   
+  # Diferença máxima de tempo entre resultado e liberacao/isolamento na gestão de isolamento (para limite do eixo y) por mês
+  max_dif_isolamento_month_res <- gestao_isolamento_tbl %>% 
+    mutate(Horas_res = as.numeric(difftime(RELEASE_DATE, result_status_date_time, units = "hours")),
+           month = as.Date(floor_date(collection_date_time, unit = "month"))) |>
+    group_by(month, DESCRIPTION) |>
+    summarise(Horas_res = mean(Horas_res, na.rm = T)) %>%
+    ungroup() %>%
+    filter(Horas_res == max(Horas_res, na.rm = TRUE)) %>%
+    select(Horas_res) %>%
+    mutate(Horas_res = Horas_res*1.2)  
   
-  xts_dataset_gi <- reactive({ 
+  # Diferença máxima de tempo na gestão de isolamento (para limite do eixo y) por semana
+  max_dif_isolamento_week <- gestao_isolamento_tbl %>% 
+    mutate(Horas = as.numeric(difftime(result_status_date_time, collection_date_time, units = "hours")),
+           week = as.Date(floor_date(collection_date_time, unit = "week"))) |>
+    group_by(week, DESCRIPTION) |>
+    summarise(Horas = mean(Horas, na.rm = T)) %>%
+    ungroup() %>%
+    filter(Horas == max(Horas, na.rm = TRUE)) %>%
+    select(Horas) %>%
+    mutate(Horas = Horas*1.2)
+  
+  # Diferença máxima de tempo entre resultado e liberacao/isolamento na gestão de isolamento (para limite do eixo y) por semana
+  max_dif_isolamento_week_res <- gestao_isolamento_tbl %>% 
+    mutate(Horas_res = as.numeric(difftime(RELEASE_DATE, result_status_date_time, units = "hours")),
+           week = as.Date(floor_date(collection_date_time, unit = "week"))) |>
+    group_by(week, DESCRIPTION) |>
+    summarise(Horas_res = mean(Horas_res, na.rm = T)) %>%
+    ungroup() %>%
+    filter(Horas_res == max(Horas_res, na.rm = TRUE)) %>%
+    select(Horas_res) %>%
+    mutate(Horas_res = Horas_res*1.2)
+  
+  output$gi_dif_amostra_result_plot_month <- renderPlotly({
     
-  # Preparar tabela em branco para plot de gestao de isolamento
-  date_range_gi <- range(gi_tbl_prev_date()$month)
+    if(filter_gi$gi_button_sector == "Agregados") {
+
+      display_hoverinfo = ifelse(all(is.na(gi_tbl_month()$Horas)), 'none','text')
+      
+      p4 <- gi_tbl_month() %>%
+        plot_ly(
+          x = ~month,
+          y = ~Horas,
+          marker = list(color = '#08A18E'),
+          line = list(color = '#08A18E'),
+          type = "scatter",
+          mode = "lines+markers",
+          text = ~paste0(str_to_title(format(month, format = "%B %Y")),'<br>Tempo: ', format(round(Horas, 1), decimal.mark = ","), ' horas'),
+          hoverinfo = display_hoverinfo,
+          showlegend = FALSE
+        ) |>
+        layout(
+          shapes = list(
+            list(
+              type = "line",
+              x0 = min(gi_tbl_month()$month, na.rm = TRUE),
+              x1 = max(gi_tbl_month()$month, na.rm = TRUE),
+              y0 = 24,
+              y1 = 24,
+              line = list(dash = "dash", color = "red")
+            )
+          ),
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_month(),
+            type = "date",
+            tickformat = "%b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = "M1"  # One month intervals
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Tempo (horas)",
+            range = c(0, max_dif_isolamento_month$Horas)
+          ),
+          annotations = list(
+            list(
+              x = max(gi_tbl_month()$month, na.rm = TRUE),
+              y = 26,
+              text = "24 horas",
+              showarrow = FALSE,
+              font = list(color = "red", size = 12),
+              xanchor = "right"
+            )
+          ),
+          margin = list(l = 50, r = 50, t = 50, b = 50)
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+    
+    } else {
+      
+      color_pallete <- viridis::viridis(length(unique(gi_tbl_sector()$DESCRIPTION)))
+      
+      display_hoverinfo = ifelse(all(is.na(gi_tbl_sector()$Horas)), 'none','text')
+      
+      p4 <- gi_tbl_sector() %>%
+        plot_ly(
+          x = ~month,
+          y = ~Horas,
+          color = ~DESCRIPTION,
+          colors = color_pallete,
+          type = "scatter",
+          mode = "lines+markers",
+          text = ~paste0(DESCRIPTION, ': ', format(round(Horas, 1), decimal.mark = ","), ' horas'),
+          hoverinfo = display_hoverinfo,
+          showlegend = TRUE
+        ) |>
+        layout(
+          shapes = list(
+            list(
+              type = "line",
+              x0 = min(gi_tbl_sector()$month, na.rm = TRUE),
+              x1 = max(gi_tbl_sector()$month, na.rm = TRUE),
+              y0 = 24,
+              y1 = 24,
+              line = list(dash = "dash", color = "red")
+            )
+          ),
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_month(),
+            type = "date",
+            tickformat = "%b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = "M1"  # One month intervals
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Tempo (horas)",
+            range = c(0, max_dif_isolamento_month$Horas)
+          )
+          
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+      # Mostra legenda somente se existirem valores para os filtros selecionados
+      if (!all(is.na(gi_tbl_sector()$Horas))) {
+        p4 <- p4 %>%
+          layout(
+            annotations = list(
+              list(
+                x = max(gi_tbl_sector()$month, na.rm = TRUE),
+                y = 26,
+                text = "24 horas",
+                showarrow = FALSE,
+                font = list(color = "red", size = 12),
+                xanchor = "right"
+              )
+            ),
+            hovermode = "x unified",
+            legend = list(
+              traceorder = "grouped", # Agrupa itens na legenda
+              font = list(family = "Open Sans", size = 12)
+            ),
+            margin = list(l = 50, r = 50, t = 50, b = 50)
+          )
+      }
+      
+    }
+    
+    return(p4)
+
+  })
   
-  date_seq_gi <- seq(floor_date(date_range_gi[1], unit="month"), 
-                     ceiling_date(date_range_gi[2], unit = "month"), 
-                     by = "month")
+  output$gi_dif_amostra_result_plot_week <- renderPlotly({
+    
+    gi_dar_x_axis_range <- as.numeric(diff(range(gi_tbl_week()$week)))
+    gi_dar_x_tick_label_breaks <- case_when(gi_dar_x_axis_range <= 60 ~ 1,
+                                     gi_dar_x_axis_range > 60 & gi_dar_x_axis_range <= 300 ~ 2,
+                                     gi_dar_x_axis_range > 300 & gi_dar_x_axis_range <= 540 ~ 3,
+                                     gi_dar_x_axis_range > 540 ~ 4)
+    
+    if(filter_gi$gi_button_sector == "Agregados") {
+      
+      display_hoverinfo = ifelse(all(is.na(gi_tbl_week()$Horas)), 'none','text')
+      
+      p4 <- gi_tbl_week() %>%
+        plot_ly(
+          x = ~week,
+          y = ~Horas,
+          marker = list(color = '#08A18E'),
+          line = list(color = '#08A18E'),
+          type = "scatter",
+          mode = "lines+markers",
+          text = ~paste0(str_to_title(format(week, format = "%d %b %Y")),'<br>Tempo: ', format(round(Horas, 1), decimal.mark = ","), ' horas'),
+          hoverinfo = display_hoverinfo,
+          showlegend = FALSE
+        ) |>
+        layout(
+          shapes = list(
+            list(
+              type = "line",
+              x0 = min(gi_tbl_week()$week, na.rm = TRUE),
+              x1 = max(gi_tbl_week()$week, na.rm = TRUE),
+              y0 = 24,
+              y1 = 24,
+              line = list(dash = "dash", color = "red")
+            )
+          ),
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_week(),
+            type = "date",
+            tickformat = "%d %b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = gi_dar_x_tick_label_breaks * 7 * 24 * 60 * 60 * 1000  # semanas em ms #distância entre ticks
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Tempo (horas)",
+            range = c(0, max_dif_isolamento_week$Horas)
+          ),
+          annotations = list(
+            list(
+              x = max(gi_tbl_week()$week, na.rm = TRUE),
+              y = 26,
+              text = "24 horas",
+              showarrow = FALSE,
+              font = list(color = "red", size = 12),
+              xanchor = "right"
+            )
+          ),
+          margin = list(l = 50, r = 50, t = 50, b = 50)
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+    } else {
+      
+      color_pallete <- viridis::viridis(length(unique(gi_tbl_sector_week()$DESCRIPTION)))
+      
+      display_hoverinfo = ifelse(all(is.na(gi_tbl_sector_week()$Horas)), 'none','text')
+      
+      p4 <- gi_tbl_sector_week() %>%
+        plot_ly(
+          x = ~week,
+          y = ~Horas,
+          color = ~DESCRIPTION,
+          colors = color_pallete,
+          type = "scatter",
+          mode = "lines+markers",
+          text = ~paste0(DESCRIPTION, ': ', format(round(Horas, 1), decimal.mark = ","), ' horas (',format(week, format = "%d %B %Y"),')'),
+          hoverinfo = display_hoverinfo,
+          showlegend = TRUE
+        ) |>
+        layout(
+          shapes = list(
+            list(
+              type = "line",
+              x0 = min(gi_tbl_sector_week()$week, na.rm = TRUE),
+              x1 = max(gi_tbl_sector_week()$week, na.rm = TRUE),
+              y0 = 24,
+              y1 = 24,
+              line = list(dash = "dash", color = "red")
+            )
+          ),
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_week(),
+            hoverformat = "Semana: %d %B %Y",
+            type = "date",
+            tickformat = "%d %b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = gi_dar_x_tick_label_breaks * 7 * 24 * 60 * 60 * 1000  # semanas em ms #distância entre ticks
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Tempo (horas)",
+            range = c(0, max_dif_isolamento_week$Horas)
+          )
+          
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+      # Mostra legenda somente se existirem valores para os filtros selecionados
+      if (!all(is.na(gi_tbl_sector_week()$Horas))) {
+        p4 <- p4 %>%
+          layout(
+            annotations = list(
+              list(
+                x = max(gi_tbl_sector_week()$week, na.rm = TRUE),
+                y = 26,
+                text = "24 horas",
+                showarrow = FALSE,
+                font = list(color = "red", size = 12),
+                xanchor = "right"
+              )
+            ),
+            hovermode = "x unified",
+            legend = list(
+              traceorder = "grouped", # Agrupa itens na legenda
+              font = list(family = "Open Sans", size = 12)
+            ),
+            margin = list(l = 50, r = 50, t = 50, b = 50)
+          )
+      }
+      
+    }
+    
+    return(p4)
+    
+  })
   
-  blank_dataset_gi = data.frame(month = date_seq_gi,
-                                Horas = rep(NA, length(date_seq_gi)))
+  output$gi_dif_amostra_result_plot <- renderUI({
+    
+    if(filter_gi$gi_button_time_setting == 'Mensal') {
+      plotlyOutput("gi_dif_amostra_result_plot_month")
+    } else {
+      plotlyOutput("gi_dif_amostra_result_plot_week")
+    }
+    
+  })
+  
+  output$gi_dif_res_amostra_result_plot_month <- renderPlotly({
+    
+    if(filter_gi$gi_button_sector == "Agregados") {
+      
+      display_hoverinfo = ifelse(all(is.na(gi_tbl_month()$Horas_res)), 'none','text')
+      
+      p4 <- gi_tbl_month() %>%
+        plot_ly(
+          x = ~month,
+          y = ~Horas_res,
+          type = "scatter",
+          mode = "lines+markers",
+          text = ~paste0(str_to_title(format(month, format = "%B %Y")),'<br>Tempo: ', format(round(Horas_res, 1), decimal.mark = ","), ' horas'),
+          hoverinfo = display_hoverinfo,
+          showlegend = FALSE
+        ) |>
+        layout(
+          shapes = list(
+            list(
+              type = "line",
+              x0 = min(gi_tbl_month()$month, na.rm = TRUE),
+              x1 = max(gi_tbl_month()$month, na.rm = TRUE),
+              y0 = 24,
+              y1 = 24,
+              line = list(dash = "dash", color = "red")
+            )
+          ),
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_month(),
+            type = "date",
+            tickformat = "%b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = "M1"  # One month intervals
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Tempo (horas)",
+            range = c(0, max_dif_isolamento_month_res$Horas_res)
+          ),
+          annotations = list(
+            list(
+              x = max(gi_tbl_month()$month, na.rm = TRUE),
+              y = 26,
+              text = "24 horas",
+              showarrow = FALSE,
+              font = list(color = "red", size = 12),
+              xanchor = "right"
+            )
+          ),
+          margin = list(l = 50, r = 50, t = 50, b = 50)
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+    } else {
+      
+      color_pallete <- viridis::viridis(length(unique(gi_tbl_sector()$DESCRIPTION)))
+      
+      display_hoverinfo = ifelse(all(is.na(gi_tbl_sector()$Horas_res)), 'none','text')
+      
+      p4 <- gi_tbl_sector() %>%
+        plot_ly(
+          x = ~month,
+          y = ~Horas_res,
+          color = ~DESCRIPTION,
+          colors = color_pallete,
+          type = "scatter",
+          mode = "lines+markers",
+          text = ~paste0(DESCRIPTION, ': ', format(round(Horas_res, 1), decimal.mark = ","), ' horas'),
+          hoverinfo = display_hoverinfo,
+          showlegend = TRUE
+        ) |>
+        layout(
+          shapes = list(
+            list(
+              type = "line",
+              x0 = min(gi_tbl_sector()$month, na.rm = TRUE),
+              x1 = max(gi_tbl_sector()$month, na.rm = TRUE),
+              y0 = 24,
+              y1 = 24,
+              line = list(dash = "dash", color = "red")
+            )
+          ),
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_month(),
+            type = "date",
+            tickformat = "%b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = "M1"  # One month intervals
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Tempo (horas)",
+            range = c(0, max_dif_isolamento_month_res$Horas_res)
+          )
+          
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+      # Mostra legenda somente se existirem valores para os filtros selecionados
+      if (!all(is.na(gi_tbl_sector()$Horas_res))) {
+        p4 <- p4 %>%
+          layout(
+            annotations = list(
+              list(
+                x = max(gi_tbl_sector()$month, na.rm = TRUE),
+                y = 26,
+                text = "24 horas",
+                showarrow = FALSE,
+                font = list(color = "red", size = 12),
+                xanchor = "right"
+              )
+            ),
+            hovermode = "x unified",
+            legend = list(
+              traceorder = "grouped", # Agrupa itens na legenda
+              font = list(family = "Open Sans", size = 12)
+            ),
+            margin = list(l = 50, r = 50, t = 50, b = 50)
+          )
+      }
+      
+    }
+    
+    return(p4)
+    
+  })
+  
+  output$gi_dif_res_amostra_result_plot_week <- renderPlotly({
+    
+    gi_dar_x_axis_range <- as.numeric(diff(range(gi_tbl_week()$week)))
+    gi_dar_x_tick_label_breaks <- case_when(gi_dar_x_axis_range <= 60 ~ 1,
+                                            gi_dar_x_axis_range > 60 & gi_dar_x_axis_range <= 300 ~ 2,
+                                            gi_dar_x_axis_range > 300 & gi_dar_x_axis_range <= 540 ~ 3,
+                                            gi_dar_x_axis_range > 540 ~ 4)
+    
+    if(filter_gi$gi_button_sector == "Agregados") {
+      
+      display_hoverinfo = ifelse(all(is.na(gi_tbl_week()$Horas_res)), 'none','text')
+      
+      p4 <- gi_tbl_week() %>%
+        plot_ly(
+          x = ~week,
+          y = ~Horas_res,
+          type = "scatter",
+          mode = "lines+markers",
+          text = ~paste0(str_to_title(format(week, format = "%d %b %Y")),'<br>Tempo: ', format(round(Horas_res, 1), decimal.mark = ","), ' horas'),
+          hoverinfo = display_hoverinfo,
+          showlegend = FALSE
+        ) |>
+        layout(
+          shapes = list(
+            list(
+              type = "line",
+              x0 = min(gi_tbl_week()$week, na.rm = TRUE),
+              x1 = max(gi_tbl_week()$week, na.rm = TRUE),
+              y0 = 24,
+              y1 = 24,
+              line = list(dash = "dash", color = "red")
+            )
+          ),
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_week(),
+            type = "date",
+            tickformat = "%d %b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = gi_dar_x_tick_label_breaks * 7 * 24 * 60 * 60 * 1000  # semanas em ms #distância entre ticks
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Tempo (horas)",
+            range = c(0, max_dif_isolamento_week_res$Horas_res)
+          ),
+          annotations = list(
+            list(
+              x = max(gi_tbl_week()$week, na.rm = TRUE),
+              y = 26,
+              text = "24 horas",
+              showarrow = FALSE,
+              font = list(color = "red", size = 12),
+              xanchor = "right"
+            )
+          ),
+          margin = list(l = 50, r = 50, t = 50, b = 50)
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+    } else {
+      
+      color_pallete <- viridis::viridis(length(unique(gi_tbl_sector_week()$DESCRIPTION)))
+      
+      display_hoverinfo = ifelse(all(is.na(gi_tbl_sector_week()$Horas_res)), 'none','text')
+      
+      p4 <- gi_tbl_sector_week() %>%
+        plot_ly(
+          x = ~week,
+          y = ~Horas_res,
+          color = ~DESCRIPTION,
+          colors = color_pallete,
+          type = "scatter",
+          mode = "lines+markers",
+          text = ~paste0(DESCRIPTION, ': ', format(round(Horas_res, 1), decimal.mark = ","), ' horas (',format(week, format = "%d %B %Y"),')'),
+          hoverinfo = display_hoverinfo,
+          showlegend = TRUE
+        ) |>
+        layout(
+          shapes = list(
+            list(
+              type = "line",
+              x0 = min(gi_tbl_sector_week()$week, na.rm = TRUE),
+              x1 = max(gi_tbl_sector_week()$week, na.rm = TRUE),
+              y0 = 24,
+              y1 = 24,
+              line = list(dash = "dash", color = "red")
+            )
+          ),
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_week(),
+            hoverformat = "Semana: %d %B %Y",
+            type = "date",
+            tickformat = "%d %b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = gi_dar_x_tick_label_breaks * 7 * 24 * 60 * 60 * 1000  # semanas em ms #distância entre ticks
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Tempo (horas)",
+            range = c(0, max_dif_isolamento_week_res$Horas_res)
+          )
+          
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+      # Mostra legenda somente se existirem valores para os filtros selecionados
+      if (!all(is.na(gi_tbl_sector_week()$Horas_res))) {
+        p4 <- p4 %>%
+          layout(
+            annotations = list(
+              list(
+                x = max(gi_tbl_sector_week()$week, na.rm = TRUE),
+                y = 26,
+                text = "24 horas",
+                showarrow = FALSE,
+                font = list(color = "red", size = 12),
+                xanchor = "right"
+              )
+            ),
+            hovermode = "x unified",
+            legend = list(
+              traceorder = "grouped", # Agrupa itens na legenda
+              font = list(family = "Open Sans", size = 12)
+            ),
+            margin = list(l = 50, r = 50, t = 50, b = 50)
+          )
+      }
+      
+    }
+    
+    return(p4)
+    
+  })
+  
+  output$gi_dif_res_amostra_result_plot <- renderUI({
+    
+    if(filter_gi$gi_button_time_setting == 'Mensal') {
+      plotlyOutput("gi_dif_res_amostra_result_plot_month")
+    } else {
+      plotlyOutput("gi_dif_res_amostra_result_plot_week")
+    }
+    
+  })
+  
+  # Saving Cost
+  
+  saving_giro_tbl_month <- reactive({
+    
+    if(nrow(saving_giro_tbl())==0) {
+      data.frame(month = c(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'month'), 
+                           floor_date(filter_gi$gestao_isolamento_data[2], unit = 'month')),
+                 saving_cost = NA)
+    } else {
+      
+      saving_giro_tbl() %>% 
+        group_by(month) |>
+        summarise(saving_cost = sum(saving_cost, na.rm = T))  %>%
+        ungroup() %>%
+        complete(month = seq(floor_date(x_range_gi_month()[1], unit = 'month'), 
+                             floor_date(x_range_gi_month()[2], unit = 'month'), by = "month"),
+                 fill = list(saving_cost = 0))
+    }
+  })
+  
+  saving_giro_tbl_week <- reactive({
+    
+    if(nrow(saving_giro_tbl())==0) {
+      data.frame(week = c(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'week'), 
+                          floor_date(filter_gi$gestao_isolamento_data[2], unit = 'week')),
+                 saving_cost = NA)
+    } else {
+      
+      saving_giro_tbl() %>% 
+        group_by(week) |>
+        summarise(saving_cost = sum(saving_cost, na.rm = T))  %>%
+        ungroup() %>%
+        complete(week = seq(floor_date(x_range_gi_week()[1], unit = 'week'), 
+                            floor_date(x_range_gi_week()[2], unit = 'week'), by = "week"),
+                 fill = list(saving_cost = 0))
+    }
+  })
+  
+  saving_giro_tbl_sector_month <- reactive({
+    
+    if(nrow(saving_giro_tbl())==0) {
+      data.frame(month = c(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'month'), 
+                           floor_date(filter_gi$gestao_isolamento_data[2], unit = 'month')),
+                 saving_cost = NA,
+                 DESCRIPTION = NA)
+    } else {
+      
+      saving_giro_tbl() %>% 
+        group_by(month, DESCRIPTION) |>
+        summarise(saving_cost = sum(saving_cost, na.rm = T))  %>%
+        ungroup() %>%
+        mutate(DESCRIPTION = factor(DESCRIPTION)) %>%
+        complete(DESCRIPTION,
+                 month = seq(floor_date(x_range_gi_month()[1], unit = 'month'), 
+                                      floor_date(x_range_gi_month()[2], unit = 'month'), by = "month"),
+                 fill = list(saving_cost = 0))
+    }
+  })
+  
+  saving_giro_tbl_sector_week <- reactive({
+    
+    if(nrow(saving_giro_tbl())==0) {
+      data.frame(week = c(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'week'), 
+                          floor_date(filter_gi$gestao_isolamento_data[2], unit = 'week')),
+                 saving_cost = NA,
+                 DESCRIPTION = NA)
+    } else {
+      
+      saving_giro_tbl() %>% 
+        group_by(week, DESCRIPTION) |>
+        summarise(saving_cost = sum(saving_cost, na.rm = T))  %>%
+        ungroup() %>%
+        mutate(DESCRIPTION = factor(DESCRIPTION)) %>%
+        complete(DESCRIPTION,
+                 week = seq(floor_date(x_range_gi_week()[1], unit = 'week'), 
+                            floor_date(x_range_gi_week()[2], unit = 'week'), by = "week"),
+                 fill = list(saving_cost = 0))
+    }
+  })
+  
+  output$saving_cost_ocupacao_leito_month <- renderPlotly({
+    
+    if(filter_gi$gi_button_sector == "Agregados") {
+
+      if(all(is.na(saving_giro_tbl_month()$saving_cost))) {
+        max_y_scm = 100
+      } else {
+        max_sc_value <- max(saving_giro_tbl_month()$saving_cost, na.rm = T)
+        max_y_scm <- ifelse(max_sc_value < 100, 100, max_sc_value*1.1)
+      }      
+            
+      if(all(is.na(saving_giro_tbl_month()$saving_cost))) {
+        pgisc <- saving_giro_tbl_month() %>%
+          plot_ly(
+            x = ~month,
+            y = ~saving_cost,
+            hoverinfo = 'none',
+            showlegend = FALSE
+          )
+        
+      } else {
+        pgisc <- saving_giro_tbl_month() %>%
+          plot_ly(
+            x = ~month,
+            y = ~saving_cost,
+            marker = list(color = '#008080'),
+            line = list(color = '#008080'),
+            type = "scatter",
+            mode = "lines+markers",
+            text = ~paste0(str_to_title(format(month, format = "%B %Y")),
+                           '<br>Economia: ', format_currency_br(saving_cost)),
+            hoverinfo = 'text',
+            showlegend = FALSE
+          )
+      }
+        
+      pgisc <- pgisc %>%
+        layout(
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_month(),
+            type = "date",
+            tickformat = "%b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = "M1",  # One month intervals
+            range = x_range_gi_month() + c(-15, 15)
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Valor economizado (Reais)",
+            range = c(0, max_y_scm),
+            tickformat = ",.2f"  # Format numbers as currency with 2 decimal places
+          ),
+          margin = list(l = 50, r = 50, t = 50, b = 50)
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+    } else {
+      
+      color_pallete_sc <- viridis::viridis(length(unique(saving_giro_tbl_sector_month()$DESCRIPTION)))
+      
+      display_hoverinfo_sc = ifelse(all(is.na(saving_giro_tbl_sector_month()$saving_cost)), 'none','text')
+      
+      if(all(is.na(saving_giro_tbl_sector_month()$saving_cost))) {
+        max_y_scm = 100
+      } else {
+        max_sc_value <- max(saving_giro_tbl_sector_month()$saving_cost, na.rm = T)
+        max_y_scm <- ifelse(max_sc_value < 100, 100, max_sc_value*1.1)
+      } 
+      
+      pgisc <- saving_giro_tbl_sector_month() %>%
+        plot_ly(
+          x = ~month,
+          y = ~saving_cost,
+          color = ~DESCRIPTION,
+          colors = color_pallete_sc,
+          type = "scatter",
+          mode = "lines+markers",
+          text = ~paste0(DESCRIPTION, ': ', format_currency_br(saving_cost)),
+          hoverinfo = display_hoverinfo_sc,
+          showlegend = TRUE
+        ) |>
+        layout(
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_month(),
+            type = "date",
+            tickformat = "%b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = "M1",  # One month intervals
+            range = x_range_gi_month() + c(-15, 15)
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Valor economizado (Reais)",
+            range = c(0, max_y_scm),
+            tickformat = ",.2f"  # Format numbers as currency with 2 decimal places
+          )
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+      # Mostra legenda somente se existirem valores para os filtros selecionados
+      if (!all(is.na(saving_giro_tbl_sector_month()$saving_cost))) {
+        pgisc <- pgisc %>%
+          layout(
+            hovermode = "x unified",
+            legend = list(
+              traceorder = "grouped", # Agrupa itens na legenda
+              font = list(family = "Open Sans", size = 12)
+            ),
+            margin = list(l = 50, r = 50, t = 50, b = 50)
+          )
+      }
+      
+    }
+    
+    return(pgisc)
+    
+  })
+  
+  output$saving_cost_ocupacao_leito_week <- renderPlotly({
+    
+    gisc_x_axis_range <- as.numeric(diff(range(gi_tbl_week()$week)))
+    gisc_x_tick_label_breaks <- case_when(gisc_x_axis_range <= 60 ~ 1,
+                                          gisc_x_axis_range > 60 & gisc_x_axis_range <= 300 ~ 2,
+                                          gisc_x_axis_range > 300 & gisc_x_axis_range <= 540 ~ 3,
+                                          gisc_x_axis_range > 540 ~ 4)
+    
+    if(filter_gi$gi_button_sector == "Agregados") {
+      
+      if(all(is.na(saving_giro_tbl_week()$saving_cost))) {
+        max_y_scm = 100
+      } else {
+        max_sc_value <- max(saving_giro_tbl_week()$saving_cost, na.rm = T)
+        max_y_scm <- ifelse(max_sc_value < 100, 100, max_sc_value*1.1)
+      }
+      
+      if(all(is.na(saving_giro_tbl_week()$saving_cost))) {
+        pgisc <- saving_giro_tbl_week() %>%
+          plot_ly(
+            x = ~week,
+            y = ~saving_cost,
+            hoverinfo = 'none',
+            showlegend = FALSE
+          )
+        
+      } else {
+        pgisc <- saving_giro_tbl_week() %>%
+          plot_ly(
+            x = ~week,
+            y = ~saving_cost,
+            marker = list(color = '#008080'),
+            line = list(color = '#008080'),
+            type = "scatter",
+            mode = "lines+markers",
+            text = ~paste0(str_to_title(format(week, format = "%d %B %Y")),
+                           '<br>Economia: ', format_currency_br(saving_cost)),
+            hoverinfo = 'text',
+            showlegend = FALSE
+          )
+      }
+      
+      pgisc <- pgisc |>
+        layout(
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_week(),
+            type = "date",
+            tickformat = "%b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = gisc_x_tick_label_breaks * 7 * 24 * 60 * 60 * 1000,  # semanas em ms #distância entre ticks
+            range = x_range_gi_week() + c(-15, 15)
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Valor economizado (Reais)",
+            range = c(0, max_y_scm),
+            tickformat = ",.2f"  # Format numbers as currency with 2 decimal places
+          ),
+          margin = list(l = 50, r = 50, t = 50, b = 50)
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+    } else {
+      
+      if(all(is.na(saving_giro_tbl_sector_week()$saving_cost))) {
+        max_y_scm = 100
+      } else {
+        max_sc_value <- max(saving_giro_tbl_sector_week()$saving_cost, na.rm = T)
+        max_y_scm <- ifelse(max_sc_value < 100, 100, max_sc_value*1.1)
+      }
+      
+      color_pallete_sc <- viridis::viridis(length(unique(saving_giro_tbl_sector_week()$DESCRIPTION)))
+      
+      display_hoverinfo_sc = ifelse(all(is.na(saving_giro_tbl_sector_week()$saving_cost)), 'none','text')
+      
+      
+      if(all(is.na(saving_giro_tbl_sector_week()$saving_cost))) {
+        pgisc <- saving_giro_tbl_sector_week() %>%
+          plot_ly(
+            x = ~week,
+            y = ~saving_cost,
+            hoverinfo = 'none',
+            showlegend = FALSE
+          )
+        
+      } else {
+        pgisc <- saving_giro_tbl_sector_week() %>%
+          plot_ly(
+            x = ~week,
+            y = ~saving_cost,
+            color = ~DESCRIPTION,
+            colors = color_pallete_sc,
+            type = "scatter",
+            mode = "lines+markers",
+            text = ~paste0(DESCRIPTION, ': ', format_currency_br(saving_cost),' (',format(week, format = "%d %B %Y"),')'),
+            hoverinfo = display_hoverinfo_sc,
+            showlegend = TRUE
+          )
+      }
+      
+      pgisc <- pgisc |>
+        layout(
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_week(),
+            type = "date",
+            tickformat = "%d %b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = gisc_x_tick_label_breaks * 7 * 24 * 60 * 60 * 1000,  # semanas em ms #distância entre ticks
+            range = x_range_gi_week() + c(-15, 15)
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Valor economizado (Reais)",
+            range = c(0, max_y_scm),
+            tickformat = ",.2f"  # Format numbers as currency with 2 decimal places
+          )
+          
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+      # Mostra legenda somente se existirem valores para os filtros selecionados
+      if (!all(is.na(saving_giro_tbl_sector_week()$saving_cost))) {
+        pgisc <- pgisc %>%
+          layout(
+            hovermode = "x unified",
+            legend = list(
+              traceorder = "grouped", # Agrupa itens na legenda
+              font = list(family = "Open Sans", size = 12)
+            ),
+            margin = list(l = 50, r = 50, t = 50, b = 50)
+          )
+      }
+      
+    }
+    
+    return(pgisc)
+    
+  })
+  
+  output$saving_cost_ocupacao_leito <- renderUI({
+    
+    if(filter_gi$gi_button_time_setting == 'Mensal') {
+      plotlyOutput("saving_cost_ocupacao_leito_month")
+    } else {
+      plotlyOutput("saving_cost_ocupacao_leito_week")
+    }
+    
+  })
+  
+  # Taxa de Rotatividade
+  saving_giro_tx_rot_month_tbl <- reactive({
+    
+    if(nrow(gi_tbl_prev())==0) {
+      data.frame(month = c(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'month'), 
+                           floor_date(filter_gi$gestao_isolamento_data[2], unit = 'month')),
+                 tx_rotatividade = NA)
+    } else {
+      
+      gi_tbl_prev() %>%
+        filter(ISOLATED == "Sim") %>%
+        mutate(RELEASE_DATE = as.Date(RELEASE_DATE)) %>%
+        filter(RELEASE_DATE >= filter_gi$gestao_isolamento_data[1] &
+                 RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
+        left_join(bed_availability_tbl, by = c("RELEASE_DATE" = "bed_date")) %>%
+        group_by(month) %>%
+        reframe(tx_rotatividade = n()/mean(bed_n, na.rm = T)*100) %>%
+        ungroup() %>%
+        complete(month = seq(floor_date(x_range_gi_month()[1], unit = 'month'), 
+                             floor_date(x_range_gi_month()[2], unit = 'month'), by = "month"),
+                 fill = list(tx_rotatividade = 0))
+    }
+  })
+  
+  saving_giro_tx_rot_week_tbl <- reactive({
+    
+    if(nrow(gi_tbl_prev())==0) {
+      data.frame(week = c(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'week'), 
+                          floor_date(filter_gi$gestao_isolamento_data[2], unit = 'week')),
+                 tx_rotatividade = NA)
+    } else {
+      
+      gi_tbl_prev() %>%
+        filter(ISOLATED == "Sim") %>%
+        mutate(RELEASE_DATE = as.Date(RELEASE_DATE)) %>%
+        filter(RELEASE_DATE >= filter_gi$gestao_isolamento_data[1] &
+                 RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
+        left_join(bed_availability_tbl, by = c("RELEASE_DATE" = "bed_date")) %>%
+        group_by(week) %>%
+        reframe(tx_rotatividade = n()/mean(bed_n, na.rm = T)*100) %>%
+        ungroup() %>%
+        complete(week = seq(floor_date(x_range_gi_week()[1], unit = 'week'), 
+                            floor_date(x_range_gi_week()[2], unit = 'week'), by = "week"),
+                 fill = list(tx_rotatividade = 0))
+    }
+  })
+  
+  # By Sector
+  
+  saving_giro_tx_rot_sector_month_tbl <- reactive({
+    
+    if(nrow(gi_tbl_prev())==0) {
+      data.frame(month = c(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'month'), 
+                           floor_date(filter_gi$gestao_isolamento_data[2], unit = 'month')),
+                 tx_rotatividade = NA,
+                 DESCRIPTION = NA)
+    } else {
+      
+      gi_tbl_prev() %>%
+        filter(ISOLATED == "Sim") %>%
+        mutate(RELEASE_DATE = as.Date(RELEASE_DATE)) %>%
+        filter(RELEASE_DATE >= filter_gi$gestao_isolamento_data[1] &
+                 RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
+        left_join(bed_availability_tbl, by = c("RELEASE_DATE" = "bed_date")) %>%
+        group_by(month, DESCRIPTION) %>%
+        reframe(tx_rotatividade = n()/mean(bed_n, na.rm = T)*100) %>%
+        ungroup() %>%
+        mutate(DESCRIPTION = factor(DESCRIPTION)) %>%
+        complete(DESCRIPTION,
+                 month = seq(floor_date(x_range_gi_month()[1], unit = 'month'), 
+                             floor_date(x_range_gi_month()[2], unit = 'month'), by = "month"),
+                 fill = list(tx_rotatividade = 0))
+    }
+  })
+  
+  saving_giro_tx_rot_sector_week_tbl <- reactive({
+    
+    if(nrow(gi_tbl_prev())==0) {
+      data.frame(week = c(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'week'), 
+                          floor_date(filter_gi$gestao_isolamento_data[2], unit = 'week')),
+                 tx_rotatividade = NA,
+                 DESCRIPTION = NA)
+    } else {
+      
+      gi_tbl_prev() %>%
+        filter(ISOLATED == "Sim") %>%
+        mutate(RELEASE_DATE = as.Date(RELEASE_DATE)) %>%
+        filter(RELEASE_DATE >= filter_gi$gestao_isolamento_data[1] &
+                 RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
+        left_join(bed_availability_tbl, by = c("RELEASE_DATE" = "bed_date")) %>%
+        group_by(week, DESCRIPTION) %>%
+        reframe(tx_rotatividade = n()/mean(bed_n, na.rm = T)*100) %>%
+        ungroup() %>%
+        mutate(DESCRIPTION = factor(DESCRIPTION)) %>%
+        complete(DESCRIPTION,
+                 week = seq(floor_date(x_range_gi_week()[1], unit = 'week'), 
+                            floor_date(x_range_gi_week()[2], unit = 'week'), by = "week"),
+                 fill = list(tx_rotatividade = 0))
+    }
+  })
+  
+  #####
+  
+  output$tx_rotatividade_month_plot <- renderPlotly({
+    
+    if(filter_gi$gi_button_sector == "Agregados") {
+      
+      if(all(is.na(saving_giro_tx_rot_month_tbl()$tx_rotatividade))) {
+        max_y_trm = 50
+      } else {
+        max_trm_value <- max(saving_giro_tx_rot_month_tbl()$tx_rotatividade, na.rm = T)
+        max_y_trm <- ifelse(max_trm_value < 50, 50, max_trm_value*1.1)
+      }
+      
+      if(all(is.na(saving_giro_tx_rot_month_tbl()$tx_rotatividade))) {
+        ptr <- saving_giro_tx_rot_month_tbl() %>%
+          plot_ly(
+            x = ~month,
+            y = ~tx_rotatividade,
+            hoverinfo = 'none',
+            showlegend = FALSE
+          )
+        
+      } else {
+        ptr <- saving_giro_tx_rot_month_tbl() %>%
+          plot_ly(
+            x = ~month,
+            y = ~tx_rotatividade,
+            marker = list(color = '#FFAF42'),
+            line = list(color = '#FFAF42'),
+            type = "scatter",
+            mode = "lines+markers",
+            text = ~paste0(str_to_title(format(month, format = "%B %Y")),
+                           '<br>Taxa: ', format(round(tx_rotatividade,1), decimal.mark = ",")),
+            hoverinfo = 'text',
+            showlegend = FALSE
+          )
+      }
+        
+      ptr <- ptr %>%
+        layout(
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_month(),
+            type = "date",
+            tickformat = "%b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = "M1",  # One month intervals
+            range = x_range_gi_month() + c(-15, 15)
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Taxa de Rotatividade",
+            range = c(0, max_y_trm)
+          ),
+          margin = list(l = 50, r = 50, t = 50, b = 50)
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+    } else {
+      
+      color_pallete_trm <- viridis::viridis(length(unique(saving_giro_tx_rot_sector_month_tbl()$DESCRIPTION)))
+      
+      display_hoverinfo_trm = ifelse(all(is.na(saving_giro_tx_rot_sector_month_tbl()$tx_rotatividade)), 'none','text')
+      
+      if(all(is.na(saving_giro_tx_rot_sector_month_tbl()$tx_rotatividade))) {
+        max_y_trm = 20
+      } else {
+        max_trm_value <- max(saving_giro_tx_rot_sector_month_tbl()$tx_rotatividade, na.rm = T)
+        max_y_trm <- ifelse(max_trm_value < 20, 20, max_trm_value*1.1)
+      }
+      
+      ptr <- saving_giro_tx_rot_sector_month_tbl() %>%
+        plot_ly(
+          x = ~month,
+          y = ~tx_rotatividade,
+          color = ~DESCRIPTION,
+          colors = color_pallete_trm,
+          type = "scatter",
+          mode = "lines+markers",
+          text = ~paste0(DESCRIPTION,': ', format(round(tx_rotatividade,1), decimal.mark = ",")),
+          hoverinfo = display_hoverinfo_trm,
+          showlegend = TRUE
+        ) |>
+        layout(
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_month(),
+            type = "date",
+            tickformat = "%b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = "M1",  # One month intervals
+            range = x_range_gi_month() + c(-15, 15)
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Taxa de Rotatividade",
+            range = c(0, max_y_trm)
+          )
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+      # Mostra legenda somente se existirem valores para os filtros selecionados
+      if (!all(is.na(saving_giro_tx_rot_sector_month_tbl()$tx_rotatividade))) {
+        ptr <- ptr %>%
+          layout(
+            hovermode = "x unified",
+            legend = list(
+              traceorder = "grouped", # Agrupa itens na legenda
+              font = list(family = "Open Sans", size = 12)
+            ),
+            margin = list(l = 50, r = 50, t = 50, b = 50)
+          )
+      }
+      
+    }
+    
+    return(ptr)
+    
+  })
+  
+  output$tx_rotatividade_week_plot <- renderPlotly({
+    
+    trm_x_axis_range <- as.numeric(diff(range(gi_tbl_week()$week)))
+    trm_x_tick_label_breaks <- case_when(trm_x_axis_range <= 60 ~ 1,
+                                         trm_x_axis_range > 60 & trm_x_axis_range <= 300 ~ 2,
+                                         trm_x_axis_range > 300 & trm_x_axis_range <= 540 ~ 3,
+                                         trm_x_axis_range > 540 ~ 4)
+    
+    if(filter_gi$gi_button_sector == "Agregados") {
+      
+      if(all(is.na(saving_giro_tx_rot_week_tbl()$tx_rotatividade))) {
+        max_y_trm = 10
+      } else {
+        max_trm_value <- max(saving_giro_tx_rot_week_tbl()$tx_rotatividade, na.rm = T)
+        max_y_trm <- ifelse(max_trm_value < 10, 10, max_trm_value*1.1)
+      }
+      
+      if(all(is.na(saving_giro_tx_rot_week_tbl()$tx_rotatividade))) {
+        ptrm <- saving_giro_tx_rot_week_tbl() %>%
+          plot_ly(
+            x = ~week,
+            y = ~tx_rotatividade,
+            hoverinfo = 'none',
+            showlegend = FALSE
+          )
+        
+      } else {
+        ptrm <- saving_giro_tx_rot_week_tbl() %>%
+          plot_ly(
+            x = ~week,
+            y = ~tx_rotatividade,
+            marker = list(color = '#FFAF42'),
+            line = list(color = '#FFAF42'),
+            type = "scatter",
+            mode = "lines+markers",
+            text = ~paste0(str_to_title(format(week, format = "%d %B %Y")),
+                           '<br>Taxa: ', format(round(tx_rotatividade,1), decimal.mark = ",")),
+            hoverinfo = 'text',
+            showlegend = FALSE
+          )
+      }
+      
+      ptrm <- ptrm |>
+        layout(
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_week(),
+            type = "date",
+            tickformat = "%d %b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = trm_x_tick_label_breaks * 7 * 24 * 60 * 60 * 1000,  # semanas em ms #distância entre ticks
+            range = x_range_gi_week() + c(-15, 15)
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Taxa de Rotatividade",
+            range = c(0, max_y_trm)
+          ),
+          margin = list(l = 50, r = 50, t = 50, b = 50)
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+    } else {
+      
+      if(all(is.na(saving_giro_tbl_sector_week()$tx_rotatividade))) {
+        max_y_trm = 15
+      } else {
+        max_trm_value <- max(saving_giro_tbl_sector_week()$tx_rotatividade, na.rm = T)
+        max_y_trm <- ifelse(max_trm_value < 15, 15, max_trm_value*1.1)
+      }
+      
+      color_pallete_trm <- viridis::viridis(length(unique(saving_giro_tx_rot_sector_week_tbl()$DESCRIPTION)))
+      
+      if(all(is.na(saving_giro_tx_rot_sector_week_tbl()$tx_rotatividade))) {
+        ptrm <- saving_giro_tx_rot_sector_week_tbl() %>%
+          plot_ly(
+            x = ~week,
+            y = ~tx_rotatividade,
+            hoverinfo = 'none',
+            showlegend = FALSE
+          )
+        
+      } else {
+        ptrm <- saving_giro_tx_rot_sector_week_tbl() %>%
+          plot_ly(
+            x = ~week,
+            y = ~tx_rotatividade,
+            color = ~DESCRIPTION,
+            colors = color_pallete_trm,
+            type = "scatter",
+            mode = "lines+markers",
+            text = ~paste0(DESCRIPTION, ': ', tx_rotatividade,' (',format(week, format = "%d %B %Y"),')'),
+            hoverinfo = 'text',
+            showlegend = TRUE
+          )
+      }
+      
+      ptrm <- ptrm |>
+        layout(
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_week(),
+            type = "date",
+            tickformat = "%d %b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = trm_x_tick_label_breaks * 7 * 24 * 60 * 60 * 1000,  # semanas em ms #distância entre ticks
+            range = x_range_gi_week() + c(-15, 15)
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Taxa de Rotatividade",
+            range = c(0, max_y_trm)
+          )
+          
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+      # Mostra legenda somente se existirem valores para os filtros selecionados
+      if (!all(is.na(saving_giro_tbl_sector_week()$tx_rotatividade))) {
+        ptrm <- ptrm %>%
+          layout(
+            hovermode = "x unified",
+            legend = list(
+              traceorder = "grouped", # Agrupa itens na legenda
+              font = list(family = "Open Sans", size = 12)
+            ),
+            margin = list(l = 50, r = 50, t = 50, b = 50)
+          )
+      }
+      
+    }
+    
+    return(ptrm)
+    
+  })
+  
+  output$tx_rotatividade_ocupacao_leito <- renderUI({
+    
+    if(filter_gi$gi_button_time_setting == 'Mensal') {
+      plotlyOutput("tx_rotatividade_month_plot")
+    } else {
+      plotlyOutput("tx_rotatividade_week_plot")
+    }
+    
+  })
+  
+  ## Tempo Médio de Ocupação do Leito
+  
+  # Tempo Médio de Ocupação do Leito
+  
+  gitm_month_tbl <- reactive({
+    
+    if(nrow(gi_tbl_prev())==0) {
+      data.frame(month = c(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'month'), 
+                           floor_date(filter_gi$gestao_isolamento_data[2], unit = 'month')),
+                 tm_ocupacao_leito = NA)
+    } else {
+      
+      gi_tbl_prev() %>%
+        # Considera somente pacientes que internaram dentro do período selecionado
+        filter(ADMISSION_DATE >= filter_gi$gestao_isolamento_data[1]) %>%
+        # Considera somente pacientes que receberam alta até o período selecionado
+        filter(RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
+        # Considera somente pacientes que estavam isolados, e foram liberados
+        filter(ISOLATED == "Sim") %>%
+        # COnsidera o mês de entrada do paciente
+        mutate(month = as.Date(floor_date(ADMISSION_DATE, unit = 'month'))) %>%
+        group_by(month) %>%
+        reframe(tm_ocupacao_leito = round(sum(bed_occupation_days, na.rm = T)/n(),2)) %>%
+        ungroup() %>%
+        complete(month = seq(floor_date(x_range_gi_month()[1], unit = 'month'), 
+                             floor_date(x_range_gi_month()[2], unit = 'month'), by = "month"),
+                 fill = list(tm_ocupacao_leito = 0))
+    }
+  })
+  
+  gitm_week_tbl <- reactive({
+    
+    if(nrow(gi_tbl_prev())==0) {
+      data.frame(week = c(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'week'), 
+                          floor_date(filter_gi$gestao_isolamento_data[2], unit = 'week')),
+                 tm_ocupacao_leito = NA)
+    } else {
+      
+      gi_tbl_prev() %>%
+        # Considera somente pacientes que internaram dentro do período selecionado
+        filter(ADMISSION_DATE >= filter_gi$gestao_isolamento_data[1]) %>%
+        # Considera somente pacientes que receberam alta até o período selecionado
+        filter(RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
+        # Considera somente pacientes que estavam isolados, e foram liberados
+        filter(ISOLATED == "Sim") %>%
+        # COnsidera o mês de entrada do paciente
+        mutate(week = as.Date(floor_date(ADMISSION_DATE, unit = 'week'))) %>%
+        group_by(week) %>%
+        reframe(tm_ocupacao_leito = round(sum(bed_occupation_days, na.rm = T)/n(),2)) %>%
+        ungroup() %>%
+        complete(week = seq(floor_date(x_range_gi_week()[1], unit = 'week'), 
+                            floor_date(x_range_gi_week()[2], unit = 'week'), by = "week"),
+                 fill = list(tm_ocupacao_leito = 0))
+    }
+  })
+  
+  # By Sector
+  
+  gitm_sector_month_tbl <- reactive({
+    
+    if(nrow(gi_tbl_prev())==0) {
+      data.frame(month = c(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'month'), 
+                           floor_date(filter_gi$gestao_isolamento_data[2], unit = 'month')),
+                 tm_ocupacao_leito = NA,
+                 DESCRIPTION = NA)
+    } else {
+      
+      gi_tbl_prev() %>%
+        # Considera somente pacientes que internaram dentro do período selecionado
+        filter(ADMISSION_DATE >= filter_gi$gestao_isolamento_data[1]) %>%
+        # Considera somente pacientes que receberam alta até o período selecionado
+        filter(RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
+        # Considera somente pacientes que estavam isolados, e foram liberados
+        filter(ISOLATED == "Sim") %>%
+        # COnsidera o mês de entrada do paciente
+        mutate(month = as.Date(floor_date(ADMISSION_DATE, unit = 'month'))) %>%
+        group_by(month, DESCRIPTION) %>%
+        reframe(tm_ocupacao_leito = round(sum(bed_occupation_days, na.rm = T)/n(),2)) %>%
+        ungroup() %>%
+        mutate(DESCRIPTION = factor(DESCRIPTION)) %>%
+        complete(DESCRIPTION,
+                 month = seq(floor_date(x_range_gi_month()[1], unit = 'month'), 
+                             floor_date(x_range_gi_month()[2], unit = 'month'), by = "month"),
+                 fill = list(tm_ocupacao_leito = 0))
+    }
+  })
+  
+  gitm_sector_week_tbl <- reactive({
+    
+    if(nrow(gi_tbl_prev())==0) {
+      data.frame(week = c(floor_date(filter_gi$gestao_isolamento_data[1], unit = 'week'), 
+                          floor_date(filter_gi$gestao_isolamento_data[2], unit = 'week')),
+                 tm_ocupacao_leito = NA,
+                 DESCRIPTION = NA)
+    } else {
+      
+      gi_tbl_prev() %>%
+        # Considera somente pacientes que internaram dentro do período selecionado
+        filter(ADMISSION_DATE >= filter_gi$gestao_isolamento_data[1]) %>%
+        # Considera somente pacientes que receberam alta até o período selecionado
+        filter(RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
+        # Considera somente pacientes que estavam isolados, e foram liberados
+        filter(ISOLATED == "Sim") %>%
+        # COnsidera o mês de entrada do paciente
+        mutate(week = as.Date(floor_date(ADMISSION_DATE, unit = 'week'))) %>%
+        group_by(week, DESCRIPTION) %>%
+        reframe(tm_ocupacao_leito = round(sum(bed_occupation_days, na.rm = T)/n(),2)) %>%
+        ungroup() %>%
+        mutate(DESCRIPTION = factor(DESCRIPTION)) %>%
+        complete(DESCRIPTION,
+                 week = seq(floor_date(x_range_gi_week()[1], unit = 'week'), 
+                            floor_date(x_range_gi_week()[2], unit = 'week'), by = "week"),
+                 fill = list(tm_ocupacao_leito = 0))
+    }
+  })
+  
+  
   
   ####
-  first_row_isol_tbl <- blank_dataset_gi[1,]
-  first_row_isol_tbl[,"Horas"] <- NA
   
-  last_row_isol_tbl <- first_row_isol_tbl
-  
-  first_row_isol_tbl[,"month"] = min(blank_dataset_gi$month, na.rm = T) - 2
-  last_row_isol_tbl[,"month"] = max(blank_dataset_gi$month, na.rm = T) + 2
-  
-  expanded_blank_dataset_gi <- rbind(first_row_isol_tbl, blank_dataset_gi, last_row_isol_tbl)
-  
-  xts(expanded_blank_dataset_gi %>% select(Horas),
-                        order.by = expanded_blank_dataset_gi$month)
-  })
-  
-  
-  output$plot1a <- renderDygraph({
-
-    if(is.null(gi_tbl()) | nrow(gi_tbl()) == 0) {
-
-      ### Visualização 1
-      dygraph(xts_dataset_gi()) |>
-        dyRangeSelector() |> # seletor inferior de tempo
-        dyCrosshair(direction = 'vertical') |> # linhas verticais pra acompanhar o mouse
-        dyLimit(as.numeric(24), "24 horas", color = "red", labelLoc = "right") %>%
-        dyEvent('2023-4-1', 'Solução Go-Live', labelLoc = c('bottom'), 
-                strokePattern = 'solid', color = "grey") |> # indicador de evento
-        dyAxis('y', label = 'Tempo (horas)', valueRange = c(0,max_dif_isolamento$Horas)) |> # label y
-        # dyAxis('x', label = "", drawGrid = FALSE, valueRange = range(gi_tbl()$month) + c(-3,3)) |> # retirando as linhas verticais do gráfico
-        dyOptions(useDataTimezone = TRUE, colors = '#08A18E', rightGap = 10, # colocando estilo mês/dia/ano quando passa o mouse
-                  drawPoints = TRUE, 
-                  pointSize = 3,
-                  fillGraph  = TRUE,
-                  animatedZooms = TRUE,
-                  includeZero = TRUE,
-                  digitsAfterDecimal = 1) |> 
-        dyUnzoom() # dando opção de desfazer o zoom
-    } else {
+  output$tm_ocupacao_leito_month_plot <- renderPlotly({
     
-    xts_dataset_gi_plot <- xts_dataset_gi() 
-    xts_dataset_gi_plot$Horas[2:(nrow(xts_dataset_gi())-1)] <- 0
-    xts_dataset_gi_plot[gi_tbl()$month,]$Horas <- gi_tbl()$Horas
+    if(filter_gi$gi_button_sector == "Agregados") {
       
-    if(nrow(gi_tbl()) == 1) {
-      
-      ### Visualização 1
-      dygraph(xts_dataset_gi_plot) |>
-        dyRangeSelector() |> # seletor inferior de tempo
-        dyBarChart() |> # tipo de gráfico
-        dyCrosshair(direction = 'vertical') |> # linhas verticais pra acompanhar o mouse
-        dyLimit(as.numeric(24), "24 horas", color = "red", labelLoc = "right") %>%
-        dyEvent('2023-4-1', 'Solução Go-Live', labelLoc = c('bottom'), 
-                strokePattern = 'solid', color = "grey") |> # indicador de evento
-        dyAxis('y', label = 'Tempo (horas)', valueRange = c(0,max_dif_isolamento$Horas)) |> # label y
-        # dyAxis('x', label = "", drawGrid = FALSE, valueRange = range(gi_tbl()$month) + c(-3,3)) |> # retirando as linhas verticais do gráfico
-        dyOptions(useDataTimezone = TRUE, colors = '#08A18E', rightGap = 10, # colocando estilo mês/dia/ano quando passa o mouse
-                  drawPoints = TRUE, 
-                  pointSize = 3,
-                  fillGraph  = TRUE,
-                  animatedZooms = TRUE,
-                  includeZero = TRUE,
-                  digitsAfterDecimal = 1) |> 
-        dyUnzoom() # dando opção de desfazer o zoom
-    } else {
-    
-    ### Visualização 1
-    dygraph(xts_dataset_gi_plot) |>
-      dyRangeSelector() |> # seletor inferior de tempo
-      dySeries("Horas", label = "Tempo (horas)") %>%
-      dyCrosshair(direction = 'vertical') |> # linhas verticais pra acompanhar o mouse
-      dyLimit(as.numeric(24), "24 horas", color = "red", labelLoc = "right") %>%
-      dyEvent('2023-4-1', 'Solução Go-Live', labelLoc = c('bottom'), 
-              strokePattern = 'solid', color = "grey") |> # indicador de evento
-      dyAxis('y', label = 'Tempo (horas)', valueRange = c(0,max_dif_isolamento$Horas)) |> # label y
-      # dyAxis('x', label = "", drawGrid = FALSE, valueRange = range(gi_tbl()$month) + c(-3,3)) |> # retirando as linhas verticais do gráfico
-      dyOptions(useDataTimezone = TRUE, colors = '#08A18E', rightGap = 10, # colocando estilo mês/dia/ano quando passa o mouse
-                drawPoints = TRUE, 
-                pointSize = 3,
-                fillGraph  = TRUE,
-                animatedZooms = TRUE,
-                includeZero = TRUE,
-                digitsAfterDecimal = 1) |> 
-      dyUnzoom() # dando opção de desfazer o zoom
-    }
-    }
-
-  })
-
-  output$plot1b <- renderPlotly({
-    
-    if(input$gi_button_sector == "Agregado") {
-    
-    xts_dataset_gi_ggplot <- xts_dataset_gi()[-c(1,nrow(xts_dataset_gi())),]
-    xts_dataset_gi_ggplot[index(xts_dataset_gi()),]$Horas <- 0
-    xts_dataset_gi_ggplot[gi_tbl()$month,]$Horas <- gi_tbl()$Horas
-    
-    dataset_gi_ggplot <- data.frame(month = index(xts_dataset_gi_ggplot),
-                                    Horas = xts_dataset_gi_ggplot$Horas)
-
-    p4 <- dataset_gi_ggplot %>%
-      ggplot(aes(x = month, y = Horas)) +
-      annotate("text", x = max(dataset_gi_ggplot$month, na.rm = T), y = 26, 
-               label = "24 horas",
-               color = "red",
-               size = 3) + 
-      geom_hline(yintercept = 24, linetype = "dashed", color = "red") +
-      xlab("") +
-      ylab("Tempo (horas)") +
-      theme_minimal() +
-      scale_y_continuous(expand = c(0, 0), limits = c(0, max_dif_isolamento$Horas)) +
-      scale_x_date(breaks = "month", date_labels = "%b %Y") +
-      theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
-            axis.line = element_line(),
-            plot.margin = unit(c(0.2, 0.2, 0.2, 0.2), "inches"))
-    
-    if(sum(dataset_gi_ggplot$Horas) > 0) {
-      p4 <- p4 +
-        geom_line(color = '#08A18E') +
-        geom_point(aes(text = paste0('Tempo: ', round(Horas,1), ' horas')),
-                   color = '#08A18E')
-    }  
-    
-    
-    } else {
-
-      p4 <- gi_tbl_sector() %>%
-        ggplot(aes(x = month, y = Horas, color = DESCRIPTION)) +
-        annotate("text", x = max(gi_tbl_sector()$month, na.rm = T), y = 26, 
-                 label = "24 horas",
-                 color = "red",
-                 size = 3) + 
-        geom_hline(yintercept = 24, linetype = "dashed", color = "red") +
-        xlab("") +
-        ylab("Tempo (horas)") +
-        theme_minimal() +
-        scale_y_continuous(expand = c(0, 0), limits = c(0, max_dif_isolamento$Horas)) +
-        scale_x_date(breaks = "month", date_labels = "%b %Y") +
-        theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
-              axis.line = element_line(),
-              plot.margin = unit(c(0.2, 0.2, 0.2, 0.2), "inches"),
-              legend.position = "none")
-      
-      if(nrow(gi_tbl_prev()) > 0) {
-      p4 <- p4 + geom_line() +
-        geom_point(aes(text = paste0('Setor: ', DESCRIPTION, '<br>Tempo: ', round(Horas,1), ' horas')))
+      if(all(is.na(gitm_month_tbl()$tm_ocupacao_leito))) {
+        max_y_tm = 1
+      } else {
+        max_tm_value <- max(gitm_month_tbl()$tm_ocupacao_leito, na.rm = T)
+        max_y_tm <- ifelse(max_tm_value < 1, 1, max_tm_value*1.1)
       }
+      
+      if(all(is.na(gitm_month_tbl()$tm_ocupacao_leito))) {
+        ptm <- gitm_month_tbl() %>%
+          plot_ly(
+            x = ~month,
+            y = ~tm_ocupacao_leito,
+            hoverinfo = 'none',
+            showlegend = FALSE
+          )
+        
+      } else {
+        ptm <- gitm_month_tbl() %>%
+          plot_ly(
+            x = ~month,
+            y = ~tm_ocupacao_leito,
+            marker = list(color = '#0667B5'),
+            line = list(color = '#0667B5'),
+            type = "scatter",
+            mode = "lines+markers",
+            text = ~paste0(str_to_title(format(month, format = "%B %Y")),
+                           '<br>Tempo Médio: ', format(round(tm_ocupacao_leito,1), decimal.mark = ",")),
+            hoverinfo = 'text',
+            showlegend = FALSE
+          )
+      }
+      
+      ptm <- ptm %>%
+        layout(
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Mês de Entrada do Paciente",
+            type = "date",
+            tickformat = "%b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = "M1",  # One month intervals
+            range = x_range_gi_month() + c(-15, 15)
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Média de dias de ocupação do leito",
+            range = c(0, max_y_tm)
+          ),
+          margin = list(l = 50, r = 50, t = 50, b = 50)
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+    } else {
+      
+      color_pallete_trm <- viridis::viridis(length(unique(gitm_sector_month_tbl()$DESCRIPTION)))
+      
+      display_hoverinfo_tm = ifelse(all(is.na(gitm_sector_month_tbl()$tm_ocupacao_leito)), 'none','text')
+      
+      if(all(is.na(gitm_sector_month_tbl()$tm_ocupacao_leito))) {
+        max_y_tm = 1
+      } else {
+        max_tm_value <- max(gitm_sector_month_tbl()$tm_ocupacao_leito, na.rm = T)
+        max_y_tm <- ifelse(max_tm_value < 1, 1, max_tm_value*1.1)
+      }
+      
+      ptm <- gitm_sector_month_tbl() %>%
+        plot_ly(
+          x = ~month,
+          y = ~tm_ocupacao_leito,
+          color = ~DESCRIPTION,
+          colors = color_pallete_trm,
+          type = "scatter",
+          mode = "lines+markers",
+          text = ~paste0(DESCRIPTION,': ', format(round(tm_ocupacao_leito,1), decimal.mark = ","), ' dias'),
+          hoverinfo = display_hoverinfo_tm,
+          showlegend = TRUE
+        ) |>
+        layout(
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Mês de Entrada do Paciente",
+            type = "date",
+            tickformat = "%b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = "M1",  # One month intervals
+            range = x_range_gi_month() + c(-15, 15)
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Média de dias de ocupação do leito",
+            range = c(0, max_y_tm)
+          )
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+      # Mostra legenda somente se existirem valores para os filtros selecionados
+      if (!all(is.na(gitm_sector_month_tbl()$tm_ocupacao_leito))) {
+        ptm <- ptm %>%
+          layout(
+            hovermode = "x unified",
+            legend = list(
+              traceorder = "grouped", # Agrupa itens na legenda
+              font = list(family = "Open Sans", size = 12)
+            ),
+            margin = list(l = 50, r = 50, t = 50, b = 50)
+          )
+      }
+      
     }
     
-    ggplotly(p4, tooltip = 'text') 
+    return(ptm)
+    
   })
   
+  output$tm_ocupacao_leito_week_plot <- renderPlotly({
+    
+    tmw_x_axis_range <- as.numeric(diff(range(gitm_week_tbl()$week)))
+    tmw_x_tick_label_breaks <- case_when(tmw_x_axis_range <= 60 ~ 1,
+                                         tmw_x_axis_range > 60 & tmw_x_axis_range <= 300 ~ 2,
+                                         tmw_x_axis_range > 300 & tmw_x_axis_range <= 540 ~ 3,
+                                         tmw_x_axis_range > 540 ~ 4)
+    
+    if(filter_gi$gi_button_sector == "Agregados") {
+      
+      if(all(is.na(gitm_week_tbl()$tm_ocupacao_leito))) {
+        max_y_tm = 1
+      } else {
+        max_tm_value <- max(gitm_week_tbl()$tm_ocupacao_leito, na.rm = T)
+        max_y_tm <- ifelse(max_tm_value < 1, 1, max_tm_value*1.1)
+      }
+      
+      if(all(is.na(gitm_week_tbl()$tm_ocupacao_leito))) {
+        ptmm <- gitm_week_tbl() %>%
+          plot_ly(
+            x = ~week,
+            y = ~tm_ocupacao_leito,
+            hoverinfo = 'none',
+            showlegend = FALSE
+          )
+        
+      } else {
+        ptmm <- gitm_week_tbl() %>%
+          plot_ly(
+            x = ~week,
+            y = ~tm_ocupacao_leito,
+            marker = list(color = '#0667B5'),
+            line = list(color = '#0667B5'),
+            type = "scatter",
+            mode = "lines+markers",
+            text = ~paste0(str_to_title(format(week, format = "%d %B %Y")),
+                           '<br>Tempo Médio: ', format(round(tm_ocupacao_leito,1), decimal.mark = ","), ' dias'),
+            hoverinfo = 'text',
+            showlegend = FALSE
+          )
+      }
+      
+      ptmm <- ptmm |>
+        layout(
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_week(),
+            type = "date",
+            tickformat = "%d %b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = tmw_x_tick_label_breaks * 7 * 24 * 60 * 60 * 1000,  # semanas em ms #distância entre ticks
+            range = x_range_gi_week() + c(-15, 15)
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Média de dias de ocupação do leito",
+            range = c(0, max_y_tm)
+          ),
+          margin = list(l = 50, r = 50, t = 50, b = 50)
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+    } else {
+      
+      if(all(is.na(gitm_sector_week_tbl()$tm_ocupacao_leito))) {
+        max_y_tm = 1
+      } else {
+        max_tm_value <- max(gitm_sector_week_tbl()$tm_ocupacao_leito, na.rm = T)
+        max_y_tm <- ifelse(max_tm_value < 1, 1, max_tm_value*1.1)
+      }
+      
+      color_pallete_trm <- viridis::viridis(length(unique(gitm_sector_week_tbl()$DESCRIPTION)))
+      
+      if(all(is.na(gitm_sector_week_tbl()$tm_ocupacao_leito))) {
+        ptmm <- gitm_sector_week_tbl() %>%
+          plot_ly(
+            x = ~week,
+            y = ~tm_ocupacao_leito,
+            hoverinfo = 'none',
+            showlegend = FALSE
+          )
+        
+      } else {
+        ptmm <- gitm_sector_week_tbl() %>%
+          plot_ly(
+            x = ~week,
+            y = ~tm_ocupacao_leito,
+            color = ~DESCRIPTION,
+            colors = color_pallete_trm,
+            type = "scatter",
+            mode = "lines+markers",
+            text = ~paste0(DESCRIPTION, ': ', tm_ocupacao_leito,' dias (',format(week, format = "%d %B %Y"),')'),
+            hoverinfo = 'text',
+            showlegend = TRUE
+          )
+      }
+      
+      ptmm <- ptmm |>
+        layout(
+          xaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = gi_x_label_week(),
+            type = "date",
+            tickformat = "%d %b %Y",
+            tickangle = 45,
+            tickmode = "linear",  # Define espaçamento uniforme
+            dtick = tmw_x_tick_label_breaks * 7 * 24 * 60 * 60 * 1000,  # semanas em ms #distância entre ticks
+            range = x_range_gi_week() + c(-15, 15)
+          ),
+          yaxis = list(
+            showline= T, linewidth=1, linecolor='black',
+            title = "Média de dias de ocupação do leito",
+            range = c(0, max_y_tm)
+          )
+          
+        ) %>%
+        config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+      
+      # Mostra legenda somente se existirem valores para os filtros selecionados
+      if (!all(is.na(gitm_sector_week_tbl()$tm_ocupacao_leito))) {
+        ptmm <- ptmm %>%
+          layout(
+            hovermode = "x unified",
+            legend = list(
+              traceorder = "grouped", # Agrupa itens na legenda
+              font = list(family = "Open Sans", size = 12)
+            ),
+            margin = list(l = 50, r = 50, t = 50, b = 50)
+          )
+      }
+      
+    }
+    
+    return(ptmm)
+    
+  })
   
-  output$plot1c <- renderPlotly({
+  output$tm_ocupacao_leito_plot <- renderUI({
     
-    xts_dataset_gi_ggplot <- xts_dataset_gi()[-c(1,nrow(xts_dataset_gi())),]
-    xts_dataset_gi_ggplot[index(xts_dataset_gi()),]$Horas <- 0
-    xts_dataset_gi_ggplot[gi_tbl()$month,]$Horas <- gi_tbl()$Horas
-    
-    dataset_gi_ggplot <- data.frame(month = index(xts_dataset_gi_ggplot),
-                                    Horas = xts_dataset_gi_ggplot$Horas)
-                                    
-    p3 <- dataset_gi_ggplot %>%
-      group_by(month) %>% 
-      summarise(Horas = mean(Horas)) %>% 
-      ggplot(aes(x = month, y = Horas,
-                 text = paste0('Tempo: ', round(Horas,1), ' horas'))) +
-      geom_col(fill = '#08A18E', width = 20) +
-      annotate("text", x = max(dataset_gi_ggplot$month, na.rm = T), y = 26, 
-               label = "24 horas",
-               color = "red",
-               size = 3) + 
-      geom_hline(yintercept = 24, linetype = "dashed", color = "red") +
-      xlab("") +
-      ylab("Tempo (horas)") +
-      theme_minimal() +
-      scale_y_continuous(expand = c(0, 0), limits = c(0, max_dif_isolamento$Horas)) +
-      scale_x_date(breaks = "month", date_labels = "%b %Y", limits = range(dataset_gi_ggplot$month)+c(-10,10)) +
-      theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
-            axis.line = element_line(),
-            plot.margin = unit(c(0.2, 0.2, 0.2, 0.2), "inches"))
-
-    ggplotly(p3, tooltip = 'text')
+    if(filter_gi$gi_button_time_setting == 'Mensal') {
+      plotlyOutput("tm_ocupacao_leito_month_plot")
+    } else {
+      plotlyOutput("tm_ocupacao_leito_week_plot")
+    }
     
   })
   
@@ -1648,7 +3438,8 @@ server <- function(input, output, session) {
       filter(n_med_name == 1) %>%
       select(MEDICATION_NAME, ADM_START_MONTH, DDD) %>%
       tidyr::complete(MEDICATION_NAME,
-                      ADM_START_MONTH=seq(min(ADM_START_MONTH), max(ADM_START_MONTH), by="month"),
+                      ADM_START_MONTH=seq(min(ADM_START_MONTH), 
+                                          max(ADM_START_MONTH), by="month"),
                       fill = list(DDD = 0)) %>%
       left_join(antimicrob_tbl_codes, by = "MEDICATION_NAME")
   })
@@ -2736,16 +4527,16 @@ server <- function(input, output, session) {
           legend = list(x = 100, y = 0.5),
           barmode = 'stack',
           title = list(text = plot_title_acpt, x = 0.5), # Center the title
-          xaxis = list(
+          xaxis = list(showline= T, linewidth=1, linecolor='black',showline= T, linewidth=1, linecolor='black',
             title = "",
             tickangle = 45,
             type = "date",
             tickmode = "linear",  # Define espaçamento uniforme
             dtick = "M1",  # One month intervals
-            tickformat = "%B %Y",  # Full month name and year
+            tickformat = "%b %Y",  # Full month name and year
             range = range_x_month + c(-15,-1)
           ),
-          yaxis = list(
+          yaxis = list(showline= T, linewidth=1, linecolor='black',
             title = y_lab,
             range = c(0, max_y_month)
           ),
@@ -2814,7 +4605,7 @@ server <- function(input, output, session) {
           legend = list(x = 100, y = 0.5),
           barmode = 'stack',
           title = list(text = plot_title_acpt, x = 0.5), # Center the title
-          xaxis = list(
+          xaxis = list(showline= T, linewidth=1, linecolor='black',
             title = "",
             tickangle = 45,
             type = "date",
@@ -2823,7 +4614,7 @@ server <- function(input, output, session) {
             tickformat = "%d %b %Y",  # Formato dos rótulos
             range = range_x_week + c(-5,-1)
           ),
-          yaxis = list(
+          yaxis = list(showline= T, linewidth=1, linecolor='black',
             title = y_lab,
             range = c(0, max_y_week)
           ),
@@ -2896,16 +4687,16 @@ server <- function(input, output, session) {
           legend = list(x = 100, y = 0.5),
           barmode = 'stack',
           title = list(text = plot_title_acpt_i, x = 0.5), # Center the title
-          xaxis = list(
+          xaxis = list(showline= T, linewidth=1, linecolor='black',
             title = "",
             tickangle = 45,
             type = "date",
             tickmode = "linear",  # Define espaçamento uniforme
             dtick = "M1",  # One month intervals
-            tickformat = "%B %Y",  # Full month name and year
+            tickformat = "%b %Y",  # Full month name and year
             range = range_x_month_i + c(-15,-1)
           ),
-          yaxis = list(
+          yaxis = list(showline= T, linewidth=1, linecolor='black',
             title = y_lab_i,
             range = c(0, max_y_month_i)
           ),
@@ -2975,7 +4766,7 @@ server <- function(input, output, session) {
           legend = list(x = 100, y = 0.5),
           barmode = 'stack',
           title = list(text = plot_title_acpt_i, x = 0.5), # Center the title
-          xaxis = list(
+          xaxis = list(showline= T, linewidth=1, linecolor='black',
             title = "",
             tickangle = 45,
             type = "date",
@@ -2984,7 +4775,7 @@ server <- function(input, output, session) {
             tickformat = "%d %b %Y",  # Formato dos rótulos
             range = range_x_week + c(-5,-1)
           ),
-          yaxis = list(
+          yaxis = list(showline= T, linewidth=1, linecolor='black',
             title = y_lab_i,
             range = c(0, max_y_week)
           ),
@@ -3069,16 +4860,16 @@ server <- function(input, output, session) {
           legend = list(x = 100, y = 0.5),
           barmode = 'stack',
           title = list(text = plot_title_acpt, x = 0.5), # Center the title
-          xaxis = list(
+          xaxis = list(showline= T, linewidth=1, linecolor='black',
             title = "",
             tickangle = 45,
             type = "date",
             tickmode = "linear",  # Define espaçamento uniforme
             dtick = "M1",  # One month intervals
-            tickformat = "%B %Y",  # Full month name and year
+            tickformat = "%b %Y",  # Full month name and year
             range = range_x_month_tm + c(-15,-1)
           ),
-          yaxis = list(
+          yaxis = list(showline= T, linewidth=1, linecolor='black',
             title = y_lab,
             range = c(0, max_y_month_tm)
           ),
@@ -3151,7 +4942,7 @@ server <- function(input, output, session) {
           legend = list(x = 100, y = 0.5),
           barmode = 'stack',
           title = list(text = plot_title_acpt, x = 0.5), # Center the title
-          xaxis = list(
+          xaxis = list(showline= T, linewidth=1, linecolor='black',
             title = "",
             tickangle = 45,
             type = "date",
@@ -3160,7 +4951,7 @@ server <- function(input, output, session) {
             tickformat = "%d %b %Y",  # Formato dos rótulos
             range = range_x_week_tm + c(-5,-1)
           ),
-          yaxis = list(
+          yaxis = list(showline= T, linewidth=1, linecolor='black',
             title = y_lab,
             range = c(0, max_y_week_tm)
           ),
@@ -3238,16 +5029,16 @@ server <- function(input, output, session) {
           legend = list(x = 100, y = 0.5),
           barmode = 'stack',
           title = list(text = plot_title_acpt, x = 0.5), # Center the title
-          xaxis = list(
+          xaxis = list(showline= T, linewidth=1, linecolor='black',
             title = "",
             tickangle = 45,
             type = "date",
             tickmode = "linear",  # Define espaçamento uniforme
             dtick = "M1",  # One month intervals
-            tickformat = "%B %Y",  # Full month name and year
+            tickformat = "%b %Y",  # Full month name and year
             range = range_x_month_tm_i + c(-15,-1)
           ),
-          yaxis = list(
+          yaxis = list(showline= T, linewidth=1, linecolor='black',
             title = y_lab,
             range = c(0, max_y_month_tm_i)
           ),
@@ -3322,7 +5113,7 @@ server <- function(input, output, session) {
           legend = list(x = 100, y = 0.5),
           barmode = 'stack',
           title = list(text = plot_title_acpt, x = 0.5), # Center the title
-          xaxis = list(
+          xaxis = list(showline= T, linewidth=1, linecolor='black',
             title = "",
             tickangle = 45,
             type = "date",
@@ -3331,7 +5122,7 @@ server <- function(input, output, session) {
             tickformat = "%d %b %Y",  # Formato dos rótulos
             range = range_x_week_tm_i + c(-5,-1)
           ),
-          yaxis = list(
+          yaxis = list(showline= T, linewidth=1, linecolor='black',
             title = y_lab,
             range = c(0, max_y_week_tm_i)
           ),
@@ -3440,13 +5231,13 @@ server <- function(input, output, session) {
   output$saving_ratio <- renderText({
     
     if(nrow(saving_int_tbl())==0) {
-      "0.0%"
+      "0,0%"
     } else {
     acpt_ratio_value <- saving_int_tbl() %>%
       reframe(ratio = round(sum(IMPLEMENTATION_ADHERENCE)/n()*100,1)) %>%
       unlist()
     
-    paste0(acpt_ratio_value, "%")
+    paste0(format(acpt_ratio_value, decimal.mark = ","), "%") 
     }
   })  
   # Taxa de Implementação ao longo do tempo (Tempo médio de resposta)
@@ -3497,7 +5288,7 @@ server <- function(input, output, session) {
       ) %>%
         layout(
           legend = list(x = 100, y = 0.5),
-          xaxis = list(
+          xaxis = list(showline= T, linewidth=1, linecolor='black',
             title = "",
             tickangle = 45,
             type = "date",
@@ -3506,7 +5297,7 @@ server <- function(input, output, session) {
             tickformat = "%b %Y",  # Full month name and year
             range = si_range_x_month_ratio + c(-15,-1)
           ),
-          yaxis = list(
+          yaxis = list(showline= T, linewidth=1, linecolor='black',
             title = si_y_lab_ratio,
             range = c(0, 110)
           ),
@@ -3567,7 +5358,7 @@ server <- function(input, output, session) {
         layout(
           legend = list(x = 100, y = 0.5),
           barmode = 'stack',
-          xaxis = list(
+          xaxis = list(showline= T, linewidth=1, linecolor='black',
             title = "",
             tickangle = 45,
             type = "date",
@@ -3576,7 +5367,7 @@ server <- function(input, output, session) {
             tickformat = "%d %b %Y",  # Formato dos rótulos
             range = si_range_x_week_ratio + c(-5,-1)
           ),
-          yaxis = list(
+          yaxis = list(showline= T, linewidth=1, linecolor='black',
             title = si_y_lab_ratio,
             range = c(0, 110)
           ),
@@ -3641,13 +5432,13 @@ server <- function(input, output, session) {
         legend = 'none',
         barmode = 'stack',
         title = list(text =sc_title, x = 0.5), # Center the title
-        xaxis = list(
+        xaxis = list(showline= T, linewidth=1, linecolor='black',
           title = "",
           tickmode = "linear",
           ticklen = 10,              # Increase tick length to push labels further
           tickfont = list(size = 14) # Define espaçamento uniforme
         ),
-        yaxis = list(
+        yaxis = list(showline= T, linewidth=1, linecolor='black',
           title = list(text = "Valor Total (Reais)",
                        standoff = 20),          # Increase the distance (in pixels)
           tickformat = ",.2f",  # Format numbers as currency with 2 decimal places
@@ -3719,13 +5510,13 @@ output$plot_saving_int_tm_total <- renderPlotly({
         legend = 'none',
         barmode = 'stack',
         title = list(text =stm_title, x = 0.5), # Center the title
-        xaxis = list(
+        xaxis = list(showline= T, linewidth=1, linecolor='black',
           title = "",
           tickmode = "linear",  # Define espaçamento uniforme
           ticklen = 10,              # Increase tick length to push labels further
           tickfont = list(size = 14) # Define espaçamento uniforme
         ),
-        yaxis = list(
+        yaxis = list(showline= T, linewidth=1, linecolor='black',
           title = "Tempo Médio de Uso de IV (Dias)",
           range = c(0,y_upper_limit_si_tm*1.2)
           #tickformat = ",.2f"  # Format numbers as currency with 2 decimal places
@@ -3767,7 +5558,7 @@ output$plot_si_cost_sector <- renderPlotly({
     }
 
     x_lim_upp_cost_a <- max(saving_int_cost_tbl$SAVED_COST_TOTAL, na.rm = T)
-    x_lim_upp_cost_a <- ifelse(x_lim_upp_cost_a < 100, 100, x_lim_upp_cost_b)
+    x_lim_upp_cost_a <- ifelse(x_lim_upp_cost_a < 100, 100, x_lim_upp_cost_a)
 
     plot_si_cost_a <- 
       saving_int_cost_tbl %>%
@@ -3971,16 +5762,16 @@ output$plot_atb_cost <- renderPlotly({
       hovertemplate = ~paste0("Custo total: ", format_currency_br(TOTAL_COST),"<extra></extra>")
     ) %>%
       layout(
-        xaxis = list(
+        xaxis = list(showline= T, linewidth=1, linecolor='black',
           title = "",
           tickangle = 45,
           type = "date",
           tickmode = "linear",  # Define espaçamento uniforme
           dtick = "M1",  # One month intervals
-          tickformat = "%B %Y",  # Full month name and year
+          tickformat = "%b %Y",  # Full month name and year
           range = range_x_atb_cost_month + c(-15,-10)
         ),
-        yaxis = list(
+        yaxis = list(showline= T, linewidth=1, linecolor='black',
           title = list(text = y_lab_atb_cost,
                        standoff = 20),          # Increase the distance (in pixels)
           tickformat = ",.2f",  # Format numbers as currency with 2 decimal places
@@ -4044,7 +5835,7 @@ output$plot_atb_cost <- renderPlotly({
                               "<br>Custo total: ", format_currency_br(TOTAL_COST),"<extra></extra>")
     ) %>%
       layout(
-        xaxis = list(
+        xaxis = list(showline= T, linewidth=1, linecolor='black',
           title = "",
           tickangle = 45,
           type = "date",
@@ -4053,7 +5844,7 @@ output$plot_atb_cost <- renderPlotly({
           tickformat = "%d %b %Y",  # Formato dos rótulos
           range = range_x_atb_cost_week + c(-5,-1)
         ),
-        yaxis = list(
+        yaxis = list(showline= T, linewidth=1, linecolor='black',
           title = list(text = y_lab_atb_cost,
                        standoff = 20),          # Increase the distance (in pixels)
           tickformat = ",.2f",  # Format numbers as currency with 2 decimal places
@@ -4069,6 +5860,238 @@ output$plot_atb_cost <- renderPlotly({
   atb_cost_plotly
   
 })
+
+# PRD 6
+
+saving_giro_tbl <- reactive({ 
+  
+  if(nrow(gi_tbl_prev())== 0) {
+    data.frame()
+  } else {
+  gi_tbl_prev() %>%
+    filter(ISOLATED == "Sim") %>%
+    mutate(occupation_hours = as.numeric(difftime(result_status_date_time, ADMISSION_DATE, units = "hours")),
+           occupation_days = (occupation_hours %/% 24) + 1,
+           saving_days_release = mean_isolation_time - occupation_days,
+           saving_cost = saving_days_release * bed_cost_per_day)
+  }
+})
+
+# Diferença máxima de tempo na gestão de isolamento (para limite do eixo y)
+max_dif_isolamento_sc <- reactive({ 
+
+  if(nrow(saving_giro_tbl())>0) {  
+    
+  saving_giro_tbl() %>%
+  group_by(month) %>%
+  reframe(saving_cost = sum(saving_cost, na.rm = TRUE)) |>
+  ungroup() %>%
+  filter(saving_cost == max(saving_cost, na.rm = TRUE)) %>%
+  select(saving_cost) %>%
+  mutate(max_saving_cost = saving_cost*1.2)
+    
+  } else {
+  
+    data.frame(max_saving_cost = 100)
+    
+  }
+})
+
+output$saving_giro_total_value <- renderText({
+  
+  if(nrow(saving_giro_tbl())==0) {
+    sgtvalue <- format_currency_br(0)
+  } else {
+    sgtvalue <- format_currency_br(sum(saving_giro_tbl()$saving_cost, na.rm = TRUE))
+  }
+  sgtvalue
+})
+
+# Taxa de Rotatividade
+saving_giro_tx_rot_tbl <- reactive({ 
+  gi_tbl_prev() %>%
+    filter(ISOLATED == "Sim") %>%
+    mutate(RELEASE_DATE = as.Date(RELEASE_DATE)) %>%
+    filter(RELEASE_DATE >= filter_gi$gestao_isolamento_data[1] &
+             RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
+    left_join(bed_availability_tbl, by = c("RELEASE_DATE" = "bed_date")) %>%
+    reframe(tx_rotatividade = n()/mean(bed_n, na.rm = T))
+})
+
+# Taxa de Rotatividade por Mês qqq 
+# saving_giro_tx_rot_month_tbl <- reactive({ 
+#   gi_tbl_prev() %>%
+#     filter(ISOLATED == "Sim") %>%
+#     mutate(RELEASE_DATE = as.Date(RELEASE_DATE)) %>%
+#     filter(RELEASE_DATE >= filter_gi$gestao_isolamento_data[1] &
+#              RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
+#     left_join(bed_availability_tbl, by = c("RELEASE_DATE" = "bed_date")) %>%
+#     group_by(month) %>%
+#     reframe(tx_rotatividade = n()/mean(bed_n, na.rm = T))
+# })
+# 
+# # Taxa de Rotatividade por Semana 
+# saving_giro_tx_rot_week_tbl <- reactive({ 
+#   gi_tbl_prev() %>%
+#     filter(ISOLATED == "Sim") %>%
+#     mutate(RELEASE_DATE = as.Date(RELEASE_DATE)) %>%
+#     filter(RELEASE_DATE >= filter_gi$gestao_isolamento_data[1] &
+#              RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
+#     left_join(bed_availability_tbl, by = c("RELEASE_DATE" = "bed_date")) %>%
+#     group_by(week) %>%
+#     reframe(tx_rotatividade = n()/mean(bed_n, na.rm = T))
+# })
+
+output$saving_giro_tx_rotatividade_value <- renderText({
+
+  if(nrow(gi_tbl_prev())==0) {
+    sgtx_result <- "0"
+  } else {
+    tx_giro_value <- round(saving_giro_tx_rot_tbl()$tx_rotatividade,1)*100
+    sgtx_result <- format(tx_giro_value, decimal.mark = ",", big.mark = ".", nsmall = 1)
+  }
+  sgtx_result
+})
+
+tm_ocupacao_leito_tbl <- reactive({ 
+  gi_tbl_prev() %>%
+    # Considera somente pacientes que internaram dentro do período selecionado
+    filter(RELEASE_DATE >= filter_gi$gestao_isolamento_data[1]) %>%
+    # Considera somente pacientes que receberam alta até o período selecionado
+    filter(RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
+    # Considera somente pacientes que estavam isolados, e foram liberados
+    filter(ISOLATED == "Sim") %>%
+    reframe(tm_ocupacao_leito = sum(bed_occupation_days, na.rm = T)/n())
+})
+
+output$saving_tm_ocupacao_leito_value <- renderText({
+  
+  if(nrow(gi_tbl_prev())==0) {
+    sgtmvlue <- ""
+  } else {
+    tm_value <- round(tm_ocupacao_leito_tbl()$tm_ocupacao_leito,1)
+    tm_value_format <- format(tm_value, decimal.mark = ",", big.mark = ".", nsmall = 1)
+    sgtmvlue <- paste(tm_value_format, "dias")
+  }
+  sgtmvlue
+})
+
+# output$tm_ocupacao_leito_plot <- renderPlotly({
+#   
+#   if(input$plot_gitm_time_setting == 'Mensal') {
+#   
+#     sitm_month_tbl <- gi_tbl_prev() %>%
+#       # Considera somente pacientes que internaram dentro do período selecionado
+#       filter(ADMISSION_DATE >= gestao_isolamento_range[1]) %>%
+#       # Considera somente pacientes que receberam alta até o período selecionado
+#       filter(RELEASE_DATE <= gestao_isolamento_range[2]) %>%
+#       # Considera somente pacientes que estavam isolados, e foram liberados
+#       filter(ISOLATED == "Sim") %>%
+#       # COnsidera o mês de entrada do paciente
+#       mutate(month = as.Date(floor_date(ADMISSION_DATE, unit = 'month'))) %>%
+#       group_by(month) %>%
+#       reframe(tm_ocupacao_leito = round(sum(bed_occupation_days, na.rm = T)/n(),2))
+#     
+#     if(nrow(sitm_month_tbl)==0) {
+#       
+#       dataset_gitm_ggplot <- data.frame(month = seq(x_range_gi_month()[1],
+#                                                     x_range_gi_month()[2], 
+#                                                     by = 'month'),
+#                                         tm_ocupacao_leito = 0)
+#     } else {
+#       
+#       dataset_gitm_ggplot <- sitm_month_tbl %>%
+#         complete(month = seq(x_range_gi_month()[1],
+#                              x_range_gi_month()[2], 
+#                              by = 'month'),
+#                  fill = list(tm_ocupacao_leito = 0))
+#       
+#     }
+#     
+#     max_gitm_value <- max(sitm_month_tbl$tm_ocupacao_leito, na.rm = T)
+#     max_y_gitm <- ifelse(max_gitm_value < 1, 1, max_gitm_value*1.1)
+#     
+#     pgitm <- dataset_gitm_ggplot %>%
+#       ggplot(aes(x = month, y = tm_ocupacao_leito)) +
+#       ylab("Média de dias de ocupação do leito") +
+#       xlab("Mês de entrada do paciente") +
+#       theme_minimal() +
+#       scale_y_continuous(labels = function(x) format(x, decimal.mark = ",", scientific = FALSE),
+#                          expand = c(0, 0), limits = c(0,max_y_gitm)) +
+#       scale_x_date(breaks = "month", date_labels = "%b %Y") +
+#       theme(plot.title = element_text(hjust = 0.5),
+#             axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+#             axis.line = element_line(),
+#             plot.margin = unit(c(0.2, 0.2, 0.2, 0.2), "inches"))
+#     
+#     if(sum(dataset_gitm_ggplot$tm_ocupacao_leito, na.rm = TRUE) > 0) {
+#       pgitm <- pgitm +
+#         geom_line(color = '#0667B5') +
+#         geom_point(aes(text = paste0(str_to_title(format(month, format = "%B %Y")),
+#                                      '<br>Tempo Médio: ', format(tm_ocupacao_leito, decimal.mark = ","), " dias")),
+#                    color = '#0667B5')
+#     }  
+#     
+#     # Se for semanal
+#   } else {
+#     
+#     sitm_week_tbl <-  gi_tbl_prev()  %>%
+#       # Considera somente pacientes que internaram dentro do período selecionado
+#       filter(ADMISSION_DATE >= gestao_isolamento_range[1]) %>%
+#       # Considera somente pacientes que receberam alta até o período selecionado
+#       filter(RELEASE_DATE <= gestao_isolamento_range[2]) %>%
+#       # Considera somente pacientes que estavam isolados, e foram liberados
+#       filter(ISOLATED == "Sim") %>%
+#       # COnsidera o mês de entrada do paciente
+#       mutate(week = as.Date(floor_date(ADMISSION_DATE, unit = 'week'))) %>%
+#       group_by(week) %>%
+#       reframe(tm_ocupacao_leito = round(sum(bed_occupation_days, na.rm = T)/n(),2))
+#     
+#     if(nrow(sitm_week_tbl)==0) {
+#       
+#       dataset_trm_week_ggplot <- data.frame(week = seq(x_range_gi_week()[1],
+#                                                        x_range_gi_week()[2],
+#                                                        by = 'week'),
+#                                             tm_ocupacao_leito = 0)
+#       
+#     } else {
+#       
+#       dataset_trm_week_ggplot <- sitm_week_tbl %>%
+#         complete(week = seq(x_range_gi_week()[1],
+#                             x_range_gi_week()[2],
+#                             by = 'week'),
+#                  fill = list(tm_ocupacao_leito = 0))
+#       
+#     }
+#     
+#     max_tmw_value <- max(sitm_week_tbl$tm_ocupacao_leito, na.rm = T)
+#     max_y_ptmw <- ifelse(max_tmw_value < 1, 1, max_tmw_value*1.1)
+#     
+#     pgitm <- dataset_trm_week_ggplot %>%
+#       ggplot(aes(x = week, y = tm_ocupacao_leito)) +
+#       xlab("Semana de entrada do paciente") +
+#       ylab("Média de dias de ocupação do leito") +
+#       theme_minimal() +
+#       scale_y_continuous(labels = function(x) format(x, decimal.mark = ",", scientific = FALSE),
+#                          expand = c(0, 0), limits = c(0,max_y_ptmw)) +
+#       scale_x_date(date_breaks = "2 weeks", date_labels = "%d %b %Y") +
+#       theme(plot.title = element_text(hjust = 0.5),
+#             axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+#             axis.line = element_line(),
+#             plot.margin = unit(c(0.2, 0.2, 0.2, 0.2), "inches"))
+#     
+#     if(sum(dataset_trm_week_ggplot$tm_ocupacao_leito, na.rm = TRUE) > 0) {
+#       pgitm <- pgitm +
+#         geom_line(color = '#0667B5') +
+#         geom_point(aes(text = paste0(str_to_title(format(week, format = "%d %b %Y")),
+#                                      '<br>Tempo Médio: ', format(tm_ocupacao_leito, decimal.mark = ","), " dias")),
+#                    color = '#0667B5')
+#     }
+#     
+#   }
+#   ggplotly(pgitm, tooltip = 'text')
+#   
+# })
 
 }
 
