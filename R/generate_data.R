@@ -1,12 +1,10 @@
+
+# Carregar pacotes
 library(tidyverse)
 library(lubridate)
 library(dygraphs)
 library(plotly)
 library(data.table)
-
-# Utils
-# Criar timestamp especifico:
-# timestamp_especifico <- ISOdate(2024, 11, 13, 15, 30, 0) # ano, mês, dia, hora, minuto, segundo
 
 ### Geral
 
@@ -51,24 +49,41 @@ atb_aware_list <- read.csv2("data/who_aware_atb_list.csv")
 atb_dose <- read.csv2("data/atb_doses.csv", dec = ".")
 
 # Unificar tabelas de antimicrobianos
+
+## A tabela abaixo padroniza a dosagem dos medicamentos em gramas (G), criando a coluna DOSAGE_VALUE_G
 atb_dose2 <- atb_dose %>%
   mutate(DOSAGE_VALUE_G = ifelse(DOSAGE_UNIT == "mg", DOSAGE_VALUE_ORIGINAL/1000, DOSAGE_VALUE_ORIGINAL)) %>%
   mutate(DOSAGE_VALUE_G = round(DOSAGE_VALUE_G, 2)) %>%
   dplyr::select(antibiotico, DOSAGE_VALUE_G)
 
+# A tabela abaixo junta a tabela de DDD de acordo com a recomendação da OMS com a tabela com nomes, classe e código dos medicamenots.
+# Como a tabela em DDD possui o nome em português, e a tabela com nomes, classe e código está em inglês, uma tabela intermediária (atb_translation)
+# é utilizada para fazer a correspondência (match) dos nomes dos medicamentos. A coluna 'Alias' foi criada e editada manualmente a partir dos nomes
+# em inglês (coluna 'Antibiotic') para garantir que a correspondência com os nomes fossem iguais aos da coluna 'atb_en' da tabela 'atb_translation'
 atb_tbl <- atb_ddd_oms %>%
   left_join(atb_translation, by = c("Nome" = "atb_pt")) %>%
   left_join(atb_aware_list, by = c("atb_en" = "Alias"))
 
+# Esta tabela seleciona somente as colunas de interesse e as renomeia conforme padrão de nomes no documento 'PRD Analytics 2 : DDD,DOT,LOT'
 antimicrob_tbl <- atb_tbl %>%
   dplyr::select(Nome, ATC.code, Class, DDD_OMS) %>%
   rename(MEDICATION_CLASS_CODE = ATC.code,
          MEDICATION_NAME = Nome)
 
+# Esta tabela junta informações sobre nome do antibiótico, dosagem em gramas (DOSAGE_VALUE_G), código do medicamento, classe, e dosagem
+# padrão DDD conforme a OMS
+
 antimicrob_tbl2 <- atb_dose2 %>%
   left_join(antimicrob_tbl, by = c("antibiotico" = "MEDICATION_NAME"),
             relationship = "many-to-many") %>%
+  
+  # Remover linhas em que não foram encontradas correspondências
   drop_na() %>%
+  
+  # MEDICATION_NAME: nome do antibiótico
+  # medication_code: código temporário para cada medicamento e dose, para sorteio quando gerar dados artificialmente
+  # medication_name_code: coluna intermediária para sortear valor de preço para o medicamento
+  # medication_price: preço do medicamento, sorteado aleatoriamente e proporcional ao valor da dosagem
   mutate(MEDICATION_NAME = factor(antibiotico),
          medication_code = 1:n(),
          medication_name_code = as.numeric(MEDICATION_NAME),
@@ -131,7 +146,7 @@ fwrite(bed_availability_tbl, file = "data/bed_availability_tbl.csv")
 # Gerar dados artificiais de uso de antibióticos em pacientes
 
 ## Premissas:
-# Nome e ID de pacientes: Sorteado aleatoriamente.
+# PATIENT_ID: Nome e ID de pacientes: Sorteado aleatoriamente.
 # THERAPY_START_DATE: (Data de admissão) Data de início do tratamento do antimicrobiano, sorteados entre janeiro e junho de 2023
 # UNIT_ID: Código do setor hospitalar. Sorteado aleatoriamente.
 # medication_code: atribui número aleatório de acordo com lista de medicamentos disponíveis
