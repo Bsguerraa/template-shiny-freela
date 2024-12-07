@@ -682,22 +682,7 @@ ui <- shiny::conditionalPanel(
                     full_screen = TRUE,
                     card_header("DDD (Dose Diária Definida) ao longo do tempo",
                                 style = "text-align: center;"),
-                    layout_sidebar(
-                      fillable = TRUE,
-                      sidebar = sidebar(
-                        width = 120,
-                        open = "closed",
-                        radioGroupButtons(
-                          inputId = "ddd_plot_month_button",
-                          label = "Selecione:",
-                          choices = c("Opção A", 
-                                      "Opção B"),
-                          size = "sm",
-                          direction = "vertical"
-                        )
-                      ),
-                      uiOutput("ddd_month_plot_dynamic")
-                    )
+                    plotlyOutput("ddd_plot_month")
                   ), # card                  
                   
                   card(
@@ -742,22 +727,7 @@ ui <- shiny::conditionalPanel(
                     full_screen = TRUE,
                     card_header("DOT (Days of Therapy) ao longo do tempo",
                                 style = "text-align: center;"),
-                    layout_sidebar(
-                      fillable = TRUE,
-                      sidebar = sidebar(
-                        width = 120,
-                        open = "closed",
-                        radioGroupButtons(
-                          inputId = "dot_plot_month_button",
-                          label = "Selecione:",
-                          choices = c("Opção A", 
-                                      "Opção B"),
-                          size = "sm",
-                          direction = "vertical"
-                        )
-                      ),
-                      uiOutput("dot_month_plot_dynamic")
-                    )
+                    plotlyOutput("dot_plot_month")
                   ), # card                  
                   
                   card(
@@ -801,22 +771,9 @@ ui <- shiny::conditionalPanel(
                     full_screen = TRUE,
                     card_header("LOT (Length of Treatment) ao longo do tempo",
                                 style = "text-align: center;"),
-                    layout_sidebar(
-                      fillable = TRUE,
-                      sidebar = sidebar(
-                        width = 120,
-                        open = "closed",
-                        radioGroupButtons(
-                          inputId = "lot_plot_month_button",
-                          label = "Selecione:",
-                          choices = c("Opção A", 
-                                      "Opção B"),
-                          size = "sm",
-                          direction = "vertical"
-                        )
-                      ),
-                      uiOutput("lot_month_plot_dynamic")
-                    )
+                    
+                    plotlyOutput("lot_plot_month")
+                    
                   ), # card                  
                   
                   card(
@@ -832,8 +789,19 @@ ui <- shiny::conditionalPanel(
     
     nav_panel("Aceitabilidade de Intervenções Farmacêuticas",
               card(
-                card_header("Adesão às Intervenções Sugeridas",
-                            style = "text-align: center;"),
+                card_header(
+                  # Usando flexbox para alinhar o título e o ícone
+                  div(
+                    style = "display: flex; justify-content: space-between; align-items: center;",
+                    span("Adesão às Intervenções Sugeridas", style = "flex: 1; text-align: center;"),
+                    tooltip(
+                      bsicons::bs_icon("info-circle"),
+                      "Sugestão: considera as intervenções farmacêuticas que sugerem a conversão de antibióticos de via intravenosa para via oral, que podem ser aceitas ou rejeitadas pelo profissional. Implementação: dentro das intervenções sugeridas que foram aceitas, quantas de fato foram implementadas no tratamento do paciente",
+                      id = "tooltip",
+                      placement = "top"
+                    )
+                  )
+                ),
                 height = 450,
                 max_height = 600,
                 min_height = 350,
@@ -1039,12 +1007,29 @@ ui <- shiny::conditionalPanel(
                   ),
                   plotlyOutput("plot_atb_cost")
                 )
-              )
               ),
-    # 
-    # nav_panel("Saving Giro de Leito",
-    #         #  mod_p6_ui("pag_6")
-    #           ),
+              
+              card(
+                height = 450,
+                full_screen = TRUE,
+                layout_sidebar(
+                  fillable = TRUE,
+                  sidebar = sidebar(
+                    width = 180,
+                    open = "closed",
+                    radioGroupButtons(
+                      inputId = "atb_cost_plot_button",
+                      label = "Escolha a visualização",
+                      choices = c("Destacar itens", 
+                                  "Ver somente itens selecionados"),
+                      size = "sm",
+                      direction = "vertical"
+                    )
+                  ),
+                  plotlyOutput("atb_cost_sector_plot")
+                )
+              ), # card
+              ),
     
     theme = bs_theme(
       version = 5,
@@ -3473,91 +3458,6 @@ server <- function(input, output, session) {
   
   })
   
-  output$ddd_month_dygraph <- renderDygraph({
-    
-    DDD_month_dates <- as.Date(sort(unique(DDD_month_tbl()$ADM_START_MONTH)))
-    
-    DDD_month_xts = DDD_month_tbl() %>%
-      pivot_wider(names_from = MEDICATION_NAME, values_from = DDD, id_cols = ADM_START_MONTH) %>%
-      arrange(ADM_START_MONTH) %>%
-      select(-ADM_START_MONTH) %>%
-      xts(order.by = DDD_month_dates)
-    
-    first_row_xts <- DDD_month_xts[1,]
-    first_row_xts[1,] <- NA
-    last_row_xts <- first_row_xts
-    
-    index(first_row_xts) <- min(DDD_month_dates) - 5
-    index(last_row_xts) <- max(DDD_month_dates) + 5
-    
-    DDD_month_xts <- rbind(first_row_xts, DDD_month_xts, last_row_xts)
-    
-    num_series <- ncol(DDD_month_xts)
-    colors <- brewer.pal(min(num_series, 8), "Dark2") # Paleta para até 8 categorias
-    if (num_series > 8) {
-      colors <- c(colors, rainbow(num_series - 8)) # Adiciona mais cores se necessário
-    }
-    
-    # Criar o gráfico e adicionar dySeries dinamicamente
-    dy <- dygraph(DDD_month_xts)
-    
-    for (i in seq_len(num_series)) {
-      dy <- dy %>% dySeries(names(DDD_month_xts)[i], 
-                            label = colnames(DDD_month_xts)[i], 
-                            color = colors[i],
-                            strokeWidth = 2)
-    }
-    dy |>
-      dyRangeSelector() |> # seletor inferior de tempo
-      #dyBarChart() |> # tipo de gráfico
-      #  dySeries('value', label = 'Total de Solicitações') |> # label do mouse
-      dyCrosshair(direction = 'vertical') |> # linhas verticais pra acompanhar o mouse
-      dyAxis('y', label = 'g/1000 pacientes-dia') |> # label y
-      dyAxis('x', label = "", drawGrid = TRUE, valueRange =  range(DDD_month_dates) + c(-30,30)) |> # retirando as linhas verticais do gráfico
-      dyOptions(useDataTimezone = TRUE, rightGap = 10, # colocando estilo mês/dia/ano quando passa o mouse
-                drawPoints = TRUE, pointSize = 4,
-                fillGraph  = F) |> 
-      dyLegend(show = "always", hideOnMouseOut = FALSE,
-               labelsDiv = "ddd_month_dygraph_legendDivID",
-               labelsSeparateLines = TRUE#,
-               #width = "240px"
-               ) |>
-      dyUnzoom() %>% # dando opção de desfazer o zoom
-      dyHighlight(highlightCircleSize = 5, 
-                #  highlightSeriesBackgroundAlpha = 0.5,
-                  highlightSeriesOpts = list(strokeWidth = 4),
-                  hideOnMouseOut = FALSE)
-    
-    
-  })
-  
-  # Render the appropriate plot based on the selected option
-  output$ddd_month_plot_dynamic <- renderUI({
-    if (input$ddd_plot_month_button == "Opção A") {
-      plotlyOutput("ddd_plot_month")
-    } else {
-      fluidRow(
-        tags$head(
-          tags$style(HTML("
-      #ddd_month_dygraph_legendDivID {
-        background-color: white;
-        opacity: 1;
-        padding: 10px;
-        border: 1px solid #ccc;
-        border-radius: 5px;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        overflow-y: auto;
-        height: 100%; /* Ensure it spans the full height of the grid */
-      }
-    "))
-        ),
-        column(9, dygraphOutput("ddd_month_dygraph", width = "100%", height = "380px")), 
-        column(3, div(id = "ddd_month_dygraph_legendDivID"))
-      )
-      
-    }
-  })
-  
   output$ddd_datatable <- renderDataTable({
     
     DDD_month_tbl_wide = DDD_month_tbl() %>%
@@ -3757,92 +3657,6 @@ server <- function(input, output, session) {
     
     ggplotly(plot_month_dot, tooltip = "text")
   })
- 
-  
-  output$dot_month_dygraph <- renderDygraph({
-    
-    DOT_month_dates <- as.Date(sort(unique(DOT_month_tbl()$ADM_START_MONTH)))
-    
-    DOT_month_xts = DOT_month_tbl() %>%
-      pivot_wider(names_from = MEDICATION_NAME, values_from = DOT, id_cols = ADM_START_MONTH) %>%
-      arrange(ADM_START_MONTH) %>%
-      select(-ADM_START_MONTH) %>%
-      xts(order.by = DOT_month_dates)
-    
-    first_row_xts <- DOT_month_xts[1,]
-    first_row_xts[1,] <- NA
-    last_row_xts <- first_row_xts
-    
-    index(first_row_xts) <- min(DOT_month_dates) - 5
-    index(last_row_xts) <- max(DOT_month_dates) + 5
-    
-    DOT_month_xts <- rbind(first_row_xts, DOT_month_xts, last_row_xts)
-    
-    num_series <- ncol(DOT_month_xts)
-    colors <- brewer.pal(min(num_series, 8), "Dark2") # Paleta para até 8 categorias
-    if (num_series > 8) {
-      colors <- c(colors, rainbow(num_series - 8)) # Adiciona mais cores se necessário
-    }
-    
-    # Criar o gráfico e adicionar dySeries dinamicamente
-    dy <- dygraph(DOT_month_xts)
-    
-    for (i in seq_len(num_series)) {
-      dy <- dy %>% dySeries(names(DOT_month_xts)[i], 
-                            label = colnames(DOT_month_xts)[i], 
-                            color = colors[i],
-                            strokeWidth = 2)
-    }
-    dy |>
-      dyRangeSelector() |> # seletor inferior de tempo
-      #dyBarChart() |> # tipo de gráfico
-      #  dySeries('value', label = 'Total de Solicitações') |> # label do mouse
-      dyCrosshair(direction = 'vertical') |> # linhas verticais pra acompanhar o mouse
-      dyAxis('y', label = 'dia/1000 pacientes-dia') |> # label y
-      dyAxis('x', label = "", drawGrid = TRUE) |> # retirando as linhas verticais do gráfico
-      dyOptions(useDataTimezone = TRUE, rightGap = 10, # colocando estilo mês/dia/ano quando passa o mouse
-                drawPoints = TRUE, pointSize = 4,
-                fillGraph  = F) |> 
-      dyLegend(show = "always", hideOnMouseOut = FALSE,
-               labelsDiv = "dot_month_dygraph_legendDivID",
-               labelsSeparateLines = TRUE#,
-               #width = "240px"
-      ) |>
-      dyUnzoom() %>% # dando opção de desfazer o zoom
-      dyHighlight(highlightCircleSize = 5, 
-                  #  highlightSeriesBackgroundAlpha = 0.5,
-                  highlightSeriesOpts = list(strokeWidth = 4),
-                  hideOnMouseOut = FALSE)
-    
-    
-  })
-  
-  # Render the appropriate plot based on the selected option
-  output$dot_month_plot_dynamic <- renderUI({
-    if (input$dot_plot_month_button == "Opção A") {
-      plotlyOutput("dot_plot_month")
-    } else {
-      fluidRow(
-        tags$head(
-          tags$style(HTML("
-      #dot_month_dygraph_legendDivID {
-        background-color: white;
-        opacity: 1;
-        padding: 10px;
-        border: 1px solid #ccc;
-        border-radius: 5px;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        overflow-y: auto;
-        height: 100%; /* Ensure it spans the full height of the grid */
-      }
-    "))
-        ),
-        column(9, dygraphOutput("dot_month_dygraph", width = "100%", height = "380px")), 
-        column(3, div(id = "dot_month_dygraph_legendDivID"))
-      )
-      
-    }
-  })
   
   output$dot_datatable <- renderDataTable({
     
@@ -3997,90 +3811,6 @@ server <- function(input, output, session) {
             plot.margin = unit(c(0.2, 0.2, 0.2, 0.2), "inches"))
     
     ggplotly(plot_month_lot, tooltip = "text")
-  })
-  
-  
-  output$lot_month_dygraph <- renderDygraph({
-    
-    LOT_month_dates <- as.Date(sort(unique(LOT_month_tbl()$ADM_START_MONTH)))
-    
-    LOT_month_xts = LOT_month_tbl() %>%
-      pivot_wider(names_from = DESCRIPTION, values_from = LOT, id_cols = ADM_START_MONTH) %>%
-      arrange(ADM_START_MONTH) %>%
-      select(-ADM_START_MONTH) %>%
-      xts(order.by = LOT_month_dates)
-    
-    first_row_xts <- LOT_month_xts[1,]
-    first_row_xts[1,] <- NA
-    last_row_xts <- first_row_xts
-    
-    index(first_row_xts) <- min(LOT_month_dates) - 5
-    index(last_row_xts) <- max(LOT_month_dates) + 5
-    
-    LOT_month_xts <- rbind(first_row_xts, LOT_month_xts, last_row_xts)
-    
-    num_series <- ncol(LOT_month_xts)
-    colors <- brewer.pal(min(num_series, 8), "Dark2") # Paleta para até 8 categorias
-    if (num_series > 8) {
-      colors <- c(colors, rainbow(num_series - 8)) # Adiciona mais cores se necessário
-    }
-    
-    # Criar o gráfico e adicionar dySeries dinamicamente
-    dy <- dygraph(LOT_month_xts)
-    
-    for (i in seq_len(num_series)) {
-      dy <- dy %>% dySeries(names(LOT_month_xts)[i], 
-                            label = colnames(LOT_month_xts)[i], 
-                            color = colors[i],
-                            strokeWidth = 2)
-    }
-    dy |>
-      dyRangeSelector() |> # seletor inferior de tempo
-      #dyBarChart() |> # tipo de gráfico
-      #  dySeries('value', label = 'Total de Solicitações') |> # label do mouse
-      dyCrosshair(direction = 'vertical') |> # linhas verticais pra acompanhar o mouse
-      dyAxis('y', label = 'dias/1000 pacientes-dia') |> # label y
-      dyAxis('x', label = "", drawGrid = TRUE) |> # retirando as linhas verticais do gráfico
-      dyOptions(useDataTimezone = TRUE, rightGap = 10, # colocando estilo mês/dia/ano quando passa o mouse
-                drawPoints = TRUE, pointSize = 4,
-                fillGraph  = F) |> 
-      dyLegend(show = "always", hideOnMouseOut = FALSE,
-               labelsDiv = "lot_month_dygraph_legendDivID",
-               labelsSeparateLines = TRUE#,
-               #width = "240px"
-      ) |>
-      dyUnzoom() %>% # dando opção de desfazer o zoom
-      dyHighlight(highlightCircleSize = 5, 
-                  #  highlightSeriesBackgroundAlpha = 0.5,
-                  highlightSeriesOpts = list(strokeWidth = 4),
-                  hideOnMouseOut = FALSE)
-  })
-  
-  # Render the appropriate plot based on the selected option
-  output$lot_month_plot_dynamic <- renderUI({
-    if (input$lot_plot_month_button == "Opção A") {
-      plotlyOutput("lot_plot_month")
-    } else {
-      fluidRow(
-        tags$head(
-          tags$style(HTML("
-      #lot_month_dygraph_legendDivID {
-        background-color: white;
-        opacity: 1;
-        padding: 10px;
-        border: 1px solid #ccc;
-        border-radius: 5px;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        overflow-y: auto;
-        height: 100%; /* Ensure it spans the full height of the grid */
-      }
-    "))
-        ),
-        column(9, dygraphOutput("lot_month_dygraph", width = "100%", height = "380px")), 
-        column(3, div(id = "lot_month_dygraph_legendDivID"))
-      )
-      
-    }
   })
   
   output$lot_datatable <- renderDataTable({
@@ -5652,23 +5382,16 @@ observeEvent(input$filter_btn_atb_cost, {
   filter_atb_cost$atb_medication <- input$atb_medication
 })
 
-atb_cost_tbl <- reactive({
+atb_cost_tbl_prev <- reactive({
   
   atb_cost_tbl_filter_date <- antimicrob_tbl_final %>%
     dplyr::filter(THERAPY_START_DATE >= filter_atb_cost$atb_cost_date[1] &
                     THERAPY_START_DATE <= filter_atb_cost$atb_cost_date[2])
   
-  if (is.null(filter_atb_cost$atb_cost_setor)) {
-    atb_cost_tbl_filter_sector <- atb_cost_tbl_filter_date
-  } else {
-    atb_cost_tbl_filter_sector <- atb_cost_tbl_filter_date %>%
-      dplyr::filter(DESCRIPTION %in% filter_atb_cost$atb_cost_setor)
-  }
-  
   if (is.null(filter_atb_cost$atb_cost_medico_id)) {
-    atb_cost_tbl_filter_practitioner <- atb_cost_tbl_filter_sector
+    atb_cost_tbl_filter_practitioner <- atb_cost_tbl_filter_date
   } else {
-    atb_cost_tbl_filter_practitioner <- atb_cost_tbl_filter_sector %>%
+    atb_cost_tbl_filter_practitioner <- atb_cost_tbl_filter_date %>%
       dplyr::filter(PRACTITIONER_ID %in% filter_atb_cost$atb_cost_medico_id)
   }  
   
@@ -5686,7 +5409,6 @@ atb_cost_tbl <- reactive({
       dplyr::filter(MICROORGANISM_ID %in% filter_atb_cost$atb_cost_microorganism)
   }     
   
-  
   if (is.null(filter_atb_cost$atb_medication)) {
     atb_cost_tbl_filter_medication <- atb_cost_tbl_filter_micro
   } else {
@@ -5695,6 +5417,16 @@ atb_cost_tbl <- reactive({
   }       
   
   atb_cost_tbl_filter_medication
+})
+
+atb_cost_tbl <- reactive({ 
+  if (is.null(filter_atb_cost$atb_cost_setor)) {
+    atb_cost_tbl_filter_sector <- atb_cost_tbl_prev()
+  } else {
+    atb_cost_tbl_filter_sector <- atb_cost_tbl_prev() %>%
+      dplyr::filter(DESCRIPTION %in% filter_atb_cost$atb_cost_setor)
+  }
+    atb_cost_tbl_filter_sector
 })
 
 output$atb_cost_total_value <- renderText({
@@ -5859,6 +5591,65 @@ output$plot_atb_cost <- renderPlotly({
   
   atb_cost_plotly
   
+})
+
+output$atb_cost_sector_plot <- renderPlotly({
+  
+  # Opção A: Filtrar medicamentos
+  
+  if(input$atb_cost_plot_button == "Ver somente itens selecionados") {
+    
+    plot_atb_cost <- atb_cost_tbl() %>%
+      group_by(DESCRIPTION) %>%
+      reframe(TOTAL_COST = sum(TOTAL_COST, na.rm = TRUE)) %>%
+      ungroup() %>%
+      arrange(desc(TOTAL_COST)) %>%
+      ggplot(aes(y = fct_reorder(DESCRIPTION, TOTAL_COST), x = TOTAL_COST,
+                 labels = "",
+                 text = paste0(DESCRIPTION,
+                               '<br>Custo total: ', format_currency_br(TOTAL_COST)))) +
+      geom_col(fill = "#1F77B4") +
+      theme_minimal() +
+      ylab("") +
+      xlab("Custo total (R$)") +
+      theme(axis.line.y = element_line()) +
+      scale_x_continuous(expand = c(0, 0),
+                         labels = label_number(
+                           accuracy = 0.01,
+                           big.mark = ".", 
+                           decimal.mark = ","
+                         ))
+    
+    ggplotly(plot_atb_cost, tooltip = "text")
+  } else { 
+    # Opção B: Highlight nos medicamentos selecionados
+    plot_atb_cost2 =  atb_cost_tbl_prev() %>%
+      group_by(DESCRIPTION) %>%
+      reframe(TOTAL_COST = sum(TOTAL_COST, na.rm = TRUE)) %>%
+      ungroup() %>%
+      arrange(desc(TOTAL_COST)) %>%
+      mutate(highlight_sector = ifelse(DESCRIPTION %in% filter_atb_cost$atb_cost_setor, T, F)) %>%
+      ggplot(aes(y = fct_reorder(DESCRIPTION, TOTAL_COST), x = TOTAL_COST,
+                 fill = highlight_sector,
+                 labels = "",
+                 text = paste0(DESCRIPTION,
+                               '<br>Custo total: ', format_currency_br(TOTAL_COST)))) +
+      geom_col() +
+      scale_fill_manual(values = c("#1F77B4", "orange")) +
+      theme_minimal() +
+      ylab("") +
+      xlab("Custo total (R$)") +
+      theme(axis.line.y = element_line(),
+            legend.position = 'none') +
+      scale_x_continuous(expand = c(0, 0),
+                         labels = label_number(
+                           accuracy = 0.01,
+                           big.mark = ".", 
+                           decimal.mark = ","
+                         ))
+    
+    ggplotly(plot_atb_cost2, tooltip = "text")
+  }
 })
 
 # PRD 6
