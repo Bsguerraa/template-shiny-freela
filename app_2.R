@@ -3292,6 +3292,11 @@ server <- function(input, output, session) {
     filter_mic$medicamento_mic <- input$antimicrobiano_medicamento
   })
   
+  
+  antimicrob_date_range <- reactive({
+    as.Date(floor_date(filter_mic$date_range, unit = 'month'))
+  })
+  
   DDD_tbl <- reactive({
     
       antimicrob_tbl_final1 <- antimicrob_tbl_final %>%
@@ -3428,34 +3433,75 @@ server <- function(input, output, session) {
                       fill = list(DDD = 0)) %>%
       left_join(antimicrob_tbl_codes, by = "MEDICATION_NAME")
   })
+  
+  output$ddd_plot_month <- renderPlotly({
     
-  
-  output$ddd_plot_month <- renderPlotly({ 
+    if(nrow(DDD_month_tbl())==0) {
+      DDD_month_tbl_ <- data.frame(ADM_START_MONTH = as.Date("2024-01-01"),
+                                   DDD = NA,
+                                   MEDICATION_NAME = NA)
+    } else {
+      DDD_month_tbl_ <- DDD_month_tbl()
+    }
     
-  max_DDD <- max(DDD_month_tbl()$DDD)*1.1
-  
-  plot_month_ddd <- DDD_month_tbl() %>%
-    ggplot(aes(x = ADM_START_MONTH,
-               y = DDD,
-               color = MEDICATION_NAME)) +
-    geom_point(aes(text = paste0(str_to_title(format(ADM_START_MONTH, format = "%b, %Y")),
-                                 '<br>',MEDICATION_NAME,
-                                 '<br>DDD: ',round(DDD,2)
-    ))) +
-    geom_line() +
-    theme_minimal() +
-    theme(legend.position = "none") +
-    xlab("") +
-    ylab("g/1000 pacientes-dia") +
-   # labs(title = "DDD (Dose Diária Definida)") +
-    scale_x_date(date_breaks = "months", date_labels = "%b %Y") +
-    scale_y_continuous(limits = c(0,max_DDD), expand = c(0, 0)) +
-    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
-          axis.line = element_line(),
-          plot.margin = unit(c(0.2, 0.2, 0.2, 0.2), "inches"))
-  
-  ggplotly(plot_month_ddd, tooltip = "text")
-  
+    # Se desejar, definir a paleta de cores aqui
+    #color_pallete_ddd <- rainbow(length(unique(DDD_month_tbl_$MEDICATION_NAME)))
+    
+    display_hoverinfo_ddd = ifelse(all(is.na(DDD_month_tbl_$DDD)), 'none','text')
+    
+    if(all(is.na(DDD_month_tbl_$DDD))) {
+      max_y_ddd = 10
+    } else {
+      max_ddd_value <- max(DDD_month_tbl_$DDD, na.rm = T)
+      max_y_ddd <- ifelse(max_ddd_value < 10, 10, max_ddd_value*1.1)
+    }
+    
+    pdddm <- DDD_month_tbl_ %>%
+      plot_ly(
+        x = ~ADM_START_MONTH,
+        y = ~DDD,
+        color = ~MEDICATION_NAME,
+        #colors = color_pallete_ddd, # Se desejar, definir a paleta de cores aqui
+        type = "scatter",
+        mode = "lines+markers",
+        text = ~paste0(MEDICATION_NAME,': ', format(round(DDD,2), decimal.mark = ",")),
+        hoverinfo = display_hoverinfo_ddd,
+        showlegend = TRUE
+      ) |>
+      layout(
+        xaxis = list(
+          showline= T, linewidth=1, linecolor='black',
+          title = "Mês de Entrada do Paciente",
+          type = "date",
+          tickformat = "%b %Y",
+          tickangle = 45,
+          tickmode = "linear",  # Define espaçamento uniforme
+          dtick = "M1",  # One month intervals
+          range = antimicrob_date_range() + c(-15, 15)
+        ),
+        yaxis = list(
+          showline= T, linewidth=1, linecolor='black',
+          title = "g/1000 pacientes-dia",
+          range = c(0, max_y_ddd)
+        )
+      ) %>%
+      config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+    
+    # Mostra legenda somente se existirem valores para os filtros selecionados
+    if (!all(is.na(DDD_month_tbl_$DDD))) {
+      pdddm <- pdddm %>%
+        layout(
+          hovermode = "x unified",
+          legend = list(
+            traceorder = "grouped", # Agrupa itens na legenda
+            font = list(family = "Open Sans", size = 12)
+          ),
+          margin = list(l = 50, r = 50, t = 50, b = 50)
+        )
+    }
+    
+    return(pdddm)
+    
   })
   
   output$ddd_datatable <- renderDataTable({
@@ -3631,32 +3677,101 @@ server <- function(input, output, session) {
       left_join(antimicrob_tbl_codes, by = "MEDICATION_NAME")
   })
   
-  output$dot_plot_month <- renderPlotly({ 
+  output$dot_plot_month <- renderPlotly({
     
-    max_DOT <- max(DOT_month_tbl()$DOT)*1.1
+    if(nrow(DOT_month_tbl())==0) {
+      DOT_month_tbl_ <- data.frame(ADM_START_MONTH = as.Date("2024-01-01"),
+                                   DOT = NA,
+                                   MEDICATION_NAME = NA)
+    } else {
+      DOT_month_tbl_ <- DOT_month_tbl()
+    }
     
-    plot_month_dot <- DOT_month_tbl() %>%
-      ggplot(aes(x = ADM_START_MONTH,
-                 y = DOT,
-                 color = MEDICATION_NAME)) +
-      geom_point(aes(text = paste0(str_to_title(format(ADM_START_MONTH, format = "%b, %Y")),
-                                   '<br>',MEDICATION_NAME,
-                                   '<br>DOT: ',round(DOT,2)
-      ))) +
-      geom_line() +
-      theme_minimal() +
-      theme(legend.position = "none") +
-      xlab("") +
-      ylab("g/1000 pacientes-dia") +
-      # labs(title = "DOT (Dose Diária Definida)") +
-      scale_x_date(date_breaks = "months", date_labels = "%b %Y") +
-      scale_y_continuous(limits = c(0,max_DOT), expand = c(0, 0)) +
-      theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
-            axis.line = element_line(),
-            plot.margin = unit(c(0.2, 0.2, 0.2, 0.2), "inches"))
+    # Se desejar, definir a paleta de cores aqui
+    #color_pallete_dot <- rainbow(length(unique(DOT_month_tbl_$MEDICATION_NAME)))
     
-    ggplotly(plot_month_dot, tooltip = "text")
+    display_hoverinfo_dot = ifelse(all(is.na(DOT_month_tbl_$DOT)), 'none','text')
+    
+    if(all(is.na(DOT_month_tbl_$DOT))) {
+      max_y_dot = 10
+    } else {
+      max_dot_value <- max(DOT_month_tbl_$DOT, na.rm = T)
+      max_y_dot <- ifelse(max_dot_value < 10, 10, max_dot_value*1.1)
+    }
+    
+    pdotm <- DOT_month_tbl_ %>%
+      plot_ly(
+        x = ~ADM_START_MONTH,
+        y = ~DOT,
+        color = ~MEDICATION_NAME,
+        #colors = color_pallete_dot, # Se desejar, definir a paleta de cores aqui
+        type = "scatter",
+        mode = "lines+markers",
+        text = ~paste0(MEDICATION_NAME,': ', format(round(DOT,1), decimal.mark = ",")),
+        hoverinfo = display_hoverinfo_dot,
+        showlegend = TRUE
+      ) |>
+      layout(
+        xaxis = list(
+          showline= T, linewidth=1, linecolor='black',
+          title = "Mês de Entrada do Paciente",
+          type = "date",
+          tickformat = "%b %Y",
+          tickangle = 45,
+          tickmode = "linear",  # Define espaçamento uniforme
+          dtick = "M1",  # One month intervals
+          range = antimicrob_date_range() + c(-15, 15)
+        ),
+        yaxis = list(
+          showline= T, linewidth=1, linecolor='black',
+          title = "dias/1000 pacientes-dia",
+          range = c(0, max_y_dot)
+        )
+      ) %>%
+      config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+    
+    # Mostra legenda somente se existirem valores para os filtros selecionados
+    if (!all(is.na(DOT_month_tbl_$DOT))) {
+      pdotm <- pdotm %>%
+        layout(
+          hovermode = "x unified",
+          legend = list(
+            traceorder = "grouped", # Agrupa itens na legenda
+            font = list(family = "Open Sans", size = 12)
+          ),
+          margin = list(l = 50, r = 50, t = 50, b = 50)
+        )
+    }
+    
+    return(pdotm)
+    
   })
+  # output$dot_plot_month <- renderPlotly({ 
+  #   
+  #   max_DOT <- max(DOT_month_tbl()$DOT)*1.1
+  #   
+  #   plot_month_dot <- DOT_month_tbl() %>%
+  #     ggplot(aes(x = ADM_START_MONTH,
+  #                y = DOT,
+  #                color = MEDICATION_NAME)) +
+  #     geom_point(aes(text = paste0(str_to_title(format(ADM_START_MONTH, format = "%b, %Y")),
+  #                                  '<br>',MEDICATION_NAME,
+  #                                  '<br>DOT: ',round(DOT,2)
+  #     ))) +
+  #     geom_line() +
+  #     theme_minimal() +
+  #     theme(legend.position = "none") +
+  #     xlab("") +
+  #     ylab("g/1000 pacientes-dia") +
+  #     # labs(title = "DOT (Dose Diária Definida)") +
+  #     scale_x_date(date_breaks = "months", date_labels = "%b %Y") +
+  #     scale_y_continuous(limits = c(0,max_DOT), expand = c(0, 0)) +
+  #     theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+  #           axis.line = element_line(),
+  #           plot.margin = unit(c(0.2, 0.2, 0.2, 0.2), "inches"))
+  #   
+  #   ggplotly(plot_month_dot, tooltip = "text")
+  # })
   
   output$dot_datatable <- renderDataTable({
     
@@ -3787,30 +3902,74 @@ server <- function(input, output, session) {
                       fill = list(LOT = 0))
   })
   
-  output$lot_plot_month <- renderPlotly({ 
+  output$lot_plot_month <- renderPlotly({
     
-    max_LOT <- max(LOT_month_tbl()$LOT)*1.1
+    if(nrow(LOT_month_tbl())==0) {
+      LOT_month_tbl_ <- data.frame(ADM_START_MONTH = as.Date("2024-01-01"),
+                                   LOT = NA,
+                                   DESCRIPTION = NA)
+    } else {
+      LOT_month_tbl_ <- LOT_month_tbl()
+    }
     
-    plot_month_lot <- LOT_month_tbl() %>%
-      ggplot(aes(x = ADM_START_MONTH,
-                 y = LOT,
-                 color = DESCRIPTION)) +
-      geom_point(aes(text = paste0(str_to_title(format(ADM_START_MONTH, format = "%b, %Y")),
-                                   '<br>',DESCRIPTION,
-                                   '<br>LOT: ',round(LOT,2)
-      ))) +
-      geom_line() +
-      theme_minimal() +
-      theme(legend.position = "none") +
-      xlab("") +
-      ylab("dias/1000 pacientes-dia") +
-      scale_x_date(date_breaks = "months", date_labels = "%b %Y") +
-      scale_y_continuous(limits = c(0,max_LOT), expand = c(0, 0)) +
-      theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
-            axis.line = element_line(),
-            plot.margin = unit(c(0.2, 0.2, 0.2, 0.2), "inches"))
+    # Se desejar, definir a paleta de cores aqui
+    #color_pallete_lot <- rainbow(length(unique(LOT_month_tbl_$DESCRIPTION)))
     
-    ggplotly(plot_month_lot, tooltip = "text")
+    display_hoverinfo_lot = ifelse(all(is.na(LOT_month_tbl_$LOT)), 'none','text')
+    
+    if(all(is.na(LOT_month_tbl_$LOT))) {
+      max_y_lot = 10
+    } else {
+      max_lot_value <- max(LOT_month_tbl_$LOT, na.rm = T)
+      max_y_lot <- ifelse(max_lot_value < 10, 10, max_lot_value*1.1)
+    }
+    
+    plotm <- LOT_month_tbl_ %>%
+      plot_ly(
+        x = ~ADM_START_MONTH,
+        y = ~LOT,
+        color = ~DESCRIPTION,
+        #colors = color_pallete_lot, # Se desejar, definir a paleta de cores aqui
+        type = "scatter",
+        mode = "lines+markers",
+        text = ~paste0(DESCRIPTION,': ', format(round(LOT,1), decimal.mark = ",")),
+        hoverinfo = display_hoverinfo_lot,
+        showlegend = TRUE
+      ) |>
+      layout(
+        xaxis = list(
+          showline= T, linewidth=1, linecolor='black',
+          title = "Mês de Entrada do Paciente",
+          type = "date",
+          tickformat = "%b %Y",
+          tickangle = 45,
+          tickmode = "linear",  # Define espaçamento uniforme
+          dtick = "M1",  # One month intervals
+          range = antimicrob_date_range() + c(-15, 15)
+        ),
+        yaxis = list(
+          showline= T, linewidth=1, linecolor='black',
+          title = "dias/1000 pacientes-dia",
+          range = c(0, max_y_lot)
+        )
+      ) %>%
+      config(locale = "pt-BR") # Set the locale to Brazilian Portuguese
+    
+    # Mostra legenda somente se existirem valores para os filtros selecionados
+    if (!all(is.na(LOT_month_tbl_$LOT))) {
+      plotm <- plotm %>%
+        layout(
+          hovermode = "x unified",
+          legend = list(
+            traceorder = "grouped", # Agrupa itens na legenda
+            font = list(family = "Open Sans", size = 12)
+          ),
+          margin = list(l = 50, r = 50, t = 50, b = 50)
+        )
+    }
+    
+    return(plotm)
+    
   })
   
   output$lot_datatable <- renderDataTable({
@@ -5708,30 +5867,6 @@ saving_giro_tx_rot_tbl <- reactive({
     left_join(bed_availability_tbl, by = c("RELEASE_DATE" = "bed_date")) %>%
     reframe(tx_rotatividade = n()/mean(bed_n, na.rm = T))
 })
-
-# Taxa de Rotatividade por Mês qqq 
-# saving_giro_tx_rot_month_tbl <- reactive({ 
-#   gi_tbl_prev() %>%
-#     filter(ISOLATED == "Sim") %>%
-#     mutate(RELEASE_DATE = as.Date(RELEASE_DATE)) %>%
-#     filter(RELEASE_DATE >= filter_gi$gestao_isolamento_data[1] &
-#              RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
-#     left_join(bed_availability_tbl, by = c("RELEASE_DATE" = "bed_date")) %>%
-#     group_by(month) %>%
-#     reframe(tx_rotatividade = n()/mean(bed_n, na.rm = T))
-# })
-# 
-# # Taxa de Rotatividade por Semana 
-# saving_giro_tx_rot_week_tbl <- reactive({ 
-#   gi_tbl_prev() %>%
-#     filter(ISOLATED == "Sim") %>%
-#     mutate(RELEASE_DATE = as.Date(RELEASE_DATE)) %>%
-#     filter(RELEASE_DATE >= filter_gi$gestao_isolamento_data[1] &
-#              RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
-#     left_join(bed_availability_tbl, by = c("RELEASE_DATE" = "bed_date")) %>%
-#     group_by(week) %>%
-#     reframe(tx_rotatividade = n()/mean(bed_n, na.rm = T))
-# })
 
 output$saving_giro_tx_rotatividade_value <- renderText({
 
