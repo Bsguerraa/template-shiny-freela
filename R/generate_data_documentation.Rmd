@@ -1,0 +1,499 @@
+---
+title: "Documentação de Geração de Dados"
+output: html_document
+---
+
+# Introdução
+
+Este script em R realiza a preparação de dados simulados para análise de gestão hospitalar, com foco em:  
+
+- **Criação de tabelas artificiais:** Dados de pacientes, médicos, unidades hospitalares, microorganismos, e medicamentos.  
+- **Simulação de fluxos hospitalares:** Geração de dados fictícios para isolações e disponibilidade de leitos.  
+
+Os dados esperados como entrada são arquivos CSV organizados em uma pasta `data/`. O resultado final são tabelas CSV simuladas para análise.
+
+# Carregamento de Pacotes
+
+```{r setup, message=FALSE}
+# Pacotes utilizados para manipulação e visualização de dados.
+library(tidyverse)  # Manipulação de dados
+library(lubridate)  # Manipulação de datas
+library(dygraphs)   # Visualização interativa de séries temporais
+library(plotly)     # Gráficos interativos
+library(data.table) # Manipulação eficiente de grandes datasets
+
+# Comente esta linha para permitir que o arquivo .Rmd execute todos os códigos. 
+# Ela previne que os códigos sejam rodados quando for gerar um novo documento html
+knitr::opts_chunk$set(eval = FALSE)
+```
+
+# Fluxo Geral
+
+- Carregamento e filtragem de dados básicos: Importação de arquivos CSV para nomes, setores, e listas de medicamentos. 
+- Preparação de tabelas de antimicrobianos: Padronização e unificação de dados com base em classificações padrão (OMS).
+- Simulação de dados hospitalares: Criação de tabelas fictícias para fluxo de gestão, incluindo isolações e disponibilidade de leitos.
+- Salvamento das tabelas finais: Geração de arquivos CSV consolidados.
+
+# 1. Carregamento de Dados Básicos
+
+Aqui, carregamos e filtramos dados iniciais necessários para a construção das tabelas artificiais.
+
+```{r}
+# Carregar e filtrar nomes masculinos e femininos com até 10 caracteres
+nomes_masculinos <- read.csv("data/ibge-mas-10000.csv") %>%
+  mutate(nc = nchar(nome)) %>%
+  filter(nc <= 10)
+
+nomes_femininos <- read.csv("data/ibge-fem-10000.csv") %>%
+  mutate(nc = nchar(nome)) %>%
+  filter(nc <= 10)
+
+# Combinação de nomes e IDs únicos para pacientes
+names_id <- c(
+  paste0(sample(nomes_masculinos$nome, 5000), "_", sample(111111:999999, 5000)),
+  paste0(sample(nomes_femininos$nome, 5000), "_", sample(111111:999999, 5000))
+)
+
+# IDs de médicos gerados aleatoriamente a partir dos IDs de pacientes
+practitioner_id <- sample(names_id, 100)
+
+# Carregar outros dados necessários
+
+## Setores hospitalares
+setores_hospitalares <- read.csv("data/setor_hospitalar.csv")
+
+## Microorganismos
+microorganismos_especies <- read.csv("data/lista_microorganismos.csv")
+
+## Procedimentos TUSS
+procedimentos_tuss <- read.csv("data/procedimentos_tuss.csv")
+
+procedimentos_tuss <- procedimentos_tuss %>% mutate(tuss_id_completo = paste0(TUSS, " - ", Procedimento),
+                                                    codigo_procedimento = 1:nrow(.))
+```
+
+# 2. Unificação de Tabelas de Antimicrobianos
+
+A unificação dos dados utiliza traduções e informações da OMS para consolidar as tabelas.  
+
+Material utilizado como referência:  
+ATC codes https://atcddd.fhi.no/atc_ddd_index/  
+AWaRe classification: https://www.who.int/publications/i/item/2021-aware-classification  
+
+**Dados de Entrada:**
+
+- Tabela de DDD de acordo com recomendações da OMS (`atb_ddd_oms`): Contém informações sobre a Dose Diária Definida (DDD) de antimicrobianos em português.
+- Tradução de nomes de antimicrobianos PT-EN (`atb_translation`): Faz a correspondência entre nomes de antimicrobianos em português e inglês.
+- Lista da OMS com classes e códigos ATC de antimicrobianos (`atb_aware_list`): Relaciona os medicamentos às suas classes e códigos ATC (Anatomical Therapeutic Chemical).
+- Doses e unidades de antimicrobianos (`atb_dose`): Contém informações sobre apresentações dos medicamentos, valores de dosagem e unidades de medida.
+
+```{r}
+# Tabela de DDD de acordo com recomendações da OMS
+atb_ddd_oms <- read.csv2("data/atb_ddd.csv")
+
+# Tradução do nome de antimicrobiano PT-EN
+atb_translation <- read.csv("data/antibiotics_translation.csv")
+
+# Lista da OSM com classe e código ATC de cada antimicrobiano
+atb_aware_list <- read.csv2("data/who_aware_atb_list.csv")
+
+# Doses e unidades de dose por apresentação do medicamento
+atb_dose <- read.csv2("data/atb_doses.csv", dec = ".")
+```
+
+**Padronização das dosagens para gramas:**
+
+Converte os valores originais de dosagem para gramas (`DOSAGE_VALUE_G`) para padronizar a unidade de medida e facilitar análises futuras.
+Utiliza a coluna `DOSAGE_UNIT` para identificar unidades em miligramas e realizar a conversão.
+
+```{r}
+atb_dose2 <- atb_dose %>%
+  mutate(DOSAGE_VALUE_G = ifelse(DOSAGE_UNIT == "mg", DOSAGE_VALUE_ORIGINAL / 1000, DOSAGE_VALUE_ORIGINAL)) %>%
+  mutate(DOSAGE_VALUE_G = round(DOSAGE_VALUE_G, 2)) %>%
+  dplyr::select(antibiotico, DOSAGE_VALUE_G)
+```
+
+A tabela abaixo junta a tabela de DDD de acordo com a recomendação da OMS com a tabela com nomes, classe e código dos medicamentos. 
+
+Como a tabela em DDD possui o nome em português, e a tabela com nomes, classe e código está em inglês, uma tabela intermediária (atb_translation)
+é utilizada para fazer a correspondência (match) dos nomes dos medicamentos.  
+
+A coluna `Alias` foi criada e editada manualmente a partir dos nomes em inglês (coluna `Antibiotic`) para garantir que a correspondência com os nomes fossem iguais aos da coluna `atb_en` da tabela `atb_translation`
+
+```{r}
+atb_tbl <- atb_ddd_oms %>%
+  left_join(atb_translation, by = c("Nome" = "atb_pt")) %>%
+  left_join(atb_aware_list, by = c("atb_en" = "Alias"))
+```
+
+Esta tabela seleciona somente as colunas de interesse e as renomeia conforme padrão de nomes no documento 'PRD Analytics 2 : DDD,DOT,LOT'
+
+```{r}
+antimicrob_tbl <- atb_tbl %>%
+  dplyr::select(Nome, ATC.code, Class, DDD_OMS) %>%
+  rename(MEDICATION_CLASS_CODE = ATC.code,
+         MEDICATION_NAME = Nome)
+```
+
+A próxima tabela:
+
+- Integra as informações de dosagem (`atb_dose2`) com a tabela processada de antimicrobianos (`antimicrob_tbl`).
+- Remove colunas intermediárias que não são mais necessárias para reduzir redundâncias.
+- Calcula um preço fictício para cada medicamento proporcional à sua dosagem, útil para simulações ou geração de dados artificiais.
+- Junta informações sobre nome do antibiótico, dosagem em gramas (`DOSAGE_VALUE_G`), código do medicamento, classe, e dosagem padrão DDD conforme a OMS.
+
+```{r}
+antimicrob_tbl2 <- atb_dose2 %>%
+  left_join(antimicrob_tbl, by = c("antibiotico" = "MEDICATION_NAME"),
+            relationship = "many-to-many") %>%
+  
+  # Remover linhas em que não foram encontradas correspondências
+  drop_na() %>%
+  mutate(MEDICATION_NAME = factor(antibiotico),
+         medication_code = 1:n(),
+         medication_name_code = as.numeric(MEDICATION_NAME), # Associa um número para cada nome de medicamento
+         medication_price = factor(medication_name_code,
+                                   levels = c(1:max(medication_name_code)),
+                                   labels = seq(10, 100, length.out = max(21))
+         ),
+         medication_price = as.numeric(as.character(medication_price))) %>%
+  group_by(MEDICATION_NAME) %>%
+  mutate(g_ratio = DOSAGE_VALUE_G/max(DOSAGE_VALUE_G)) %>%
+  ungroup() %>%
+  mutate(medication_price = round(medication_price*g_ratio,2)) %>%
+  dplyr::select(-antibiotico, -medication_name_code, -g_ratio)
+```
+
+Ao final, a tabela `antimicrob_tbl2` contém:
+
+**DOSAGE_VALUE_G**: Dosagem padrão em gramas  
+**MEDICATION_CLASS_CODE**:Código da classe terapêutica  
+**Class**: classe do antimicrobiano, em inglês (atualmente não é utilizado no dasboard)  
+**DDD_OMS**: DDD conforme padronizado pela OMS  
+**MEDICATION_NAME**: Nome do antimicrobiano, em português  
+**medication_code**: código temporário para cada medicamento e dose, para sorteio quando gerar dados artificialmente  
+**medication_price**: preço do medicamento, sorteado aleatoriamente e proporcional ao valor da dosagem  
+
+# 3. Simulação de Dados Hospitalares: 
+   
+Simulação de tabelas de fluxo hospitalar para aba 'Gestão de Isolamento'
+
+Primeira, é criada uma variaçao aleatória para tempo de resposta (amostra - resultado) de acordo com o setor médico e armazenada na coluna `dif_set`
+
+```{r}
+setores_hospitalares <- setores_hospitalares %>%
+  mutate(dif_set = round(rnorm(25, sd = 10),0)*1000)
+```
+
+**Variáveis Simuladas**
+
+**PATIENT_ID**: Identificação única dos pacientes, gerada aleatoriamente a partir de uma lista fictícia de nomes (`names_id`).  
+**PRACTITIONER_ID**: Identificação dos profissionais de saúde, sorteada aleatoriamente da lista `practitioner_id` com reposição.  
+**UNIT_ID**: Identificação dos setores hospitalares, extraída da tabela `setores_hospitalares`.  
+**ADMISSION_DATE**: Data fictícia de entrada dos pacientes, gerada para cobrir períodos de janeiro a dezembro de 2023.  
+**collection_date_time**: Data e hora da coleta de amostras, inicialmente igual a `ADMISSION_DATE`.  
+**ISOLATED**: Indica se o paciente estava em isolamento no momento da coleta, gerada aleatoriamente como "Sim" ou "Nao". Caso estivesse isolado,
+considera-se que será liberado após o resultado do exame. Caso não estivesse isolado, considera-se que será transferido para o isolamento após o resultado
+do exame.  
+**MICROORGANISM_ID**: Nome do microorganismo identificado na amostra, sorteado aleatoriamente a partir de `microorganismos_especies$Nome`.  
+
+**Variáveis Derivadas**
+
+**result_status_date_time**: Data e hora do resultado do exame microbiológico, simulada com base na `collection_date_time` adicionando tempos fictícios (em minutos), com variação normal (rnorm) e fatores ajustados por setor.  
+**RELEASE_DATE**: Data e hora de liberação do paciente, calculada a partir de `result_status_date_time` com uma variação aleatória adicional e um intervalo fixo de 6 horas.  
+**dif_set**: Ajuste específico do tempo de resposta por setor hospitalar, calculado previamente e incorporado ao tempo final de resultado.  
+
+```{r}
+# Gerar tabela de gestão de isolamento
+gestao_isolamento_tbl2 <- data.frame(PATIENT_ID = sample(names_id, 2400),
+                                    PRACTITIONER_ID = sample(practitioner_id, 2400, replace = TRUE),
+                                    UNIT_ID = sample(setores_hospitalares$UNIT_ID, 2400, replace = TRUE),
+                                    ADMISSION_DATE = ISOdate(2023, 1:12, rep(1:20, each = 10*12), 11, 00, 0) - 28800,
+                                    collection_date_time = ISOdate(2023, 1:12, rep(1:20, each = 10*12), 11, 00, 0),
+                                    ISOLATED = sample(c("Sim","Nao"), 2400, replace = TRUE),
+                                    MICROORGANISM_ID = sample(microorganismos_especies$Nome, 2400, replace = TRUE)
+                                    ) %>%
+
+  # Gerar variaçao aleatória para tempo de resposta (amostra - resultado)
+  arrange(collection_date_time) %>%
+  mutate(result_status_date_time = collection_date_time + (rep(c(13,10,8,9,5,7,6,5,3,2,4,1)*60*3, each = 200) + round(rnorm(2400, sd = 10),0))*60,
+         RELEASE_DATE = result_status_date_time + round(rnorm(2400, sd = 30),0) + 60*60*6) %>%
+  left_join(setores_hospitalares %>% dplyr::select(UNIT_ID, dif_set), by = c("UNIT_ID")) %>%
+  mutate(result_status_date_time = result_status_date_time + dif_set)
+```
+
+Salvar arquivo em csv:
+
+```{r}
+fwrite(gestao_isolamento_tbl, file = "data/gestao_isolamento_tbl.csv")
+```
+
+Calcular o intervalo máximo de datas, considerando as quatro variáveis de tempo disponíveis na tabela: `ADMISSION_DATE`, `collection_date_time`, `result_status_date_time` e `RELEASE_DATE`.
+
+```{r}
+gestao_isolamento_range <- as.Date(range(c(range(gestao_isolamento_tbl$ADMISSION_DATE),
+                             range(gestao_isolamento_tbl$collection_date_time),
+                             range(gestao_isolamento_tbl$result_status_date_time),
+                             range(gestao_isolamento_tbl$RELEASE_DATE))))
+```
+
+A tabela a seguir informa com a disponibilidade de leitos por dia.
+
+**bed_date**: data de referência para contagem do número de leitos  
+**bed_n**: número de leitos disponíveis.  
+
+Foi simulado um número fixo de leitos (50) ao longo do todo o período, porém em situações reais ele pode ser variável.  
+O número de leitos é utilizado no calculo da taxa de rotatividade de leitos.
+
+```{r}
+bed_availability_tbl <- data.frame(
+  bed_date = as.Date(seq(gestao_isolamento_range[1], gestao_isolamento_range[2], by= "days")),
+  bed_n = 50)
+```
+
+Salvar tabela de disponibilidade de leitos em arquivo .csv:
+
+```{r}
+fwrite(bed_availability_tbl, file = "data/bed_availability_tbl.csv")
+```
+
+# 4. Consumo de antimicrobianos
+
+Este trecho de código cria um dataset artificial para simular o uso de antibióticos por pacientes em um ambiente hospitalar fictício. Ele gera informações detalhadas sobre o início, frequência, duração do tratamento, setor hospitalar, profissionais envolvidos, e os procedimentos associados.  
+
+Fluxo:
+
+- É gerada uma tabela com 2400 registros fictícios, onde cada linha representa um paciente recebendo um tratamento com antibióticos. As variáveis principais são sorteadas aleatoriamente com base em listas ou intervalos predefinidos.
+- Adiciona variáveis derivadas para complementar as análises, como frequência de administração do medicamento, mês e semana de início e término do tratamento, e ajuste na data de admissão.
+- Realiza um left_join com a tabela de procedimentos (procedimentos_tuss) para enriquecer os dados com informações sobre o código e descrição dos procedimentos realizados.
+- Remove variáveis intermediárias para manter apenas as colunas relevantes no output final.
+
+Variáveis Sorteadas ou Predefinidas:
+
+**PATIENT_ID**: Identificador único de pacientes, sorteado aleatoriamente a partir de uma lista fictícia (`names_id`).  
+**THERAPY_START_DATE**: Data de início do tratamento, sorteada entre 10 de janeiro e 15 de junho de 2023.  
+**UNIT_ID**: Código do setor hospitalar, sorteado aleatoriamente a partir da tabela `setores_hospitalares`.  
+**medication_code**: Código do medicamento, sorteado aleatoriamente entre os medicamentos disponíveis na tabela `antimicrob_tbl2`.  
+**PRACTITIONER_ID**: Identificador do profissional responsável pelo tratamento, sorteado aleatoriamente.  
+**DOSAGE_TIMING_PERIOD**: Intervalo entre as doses do medicamento (em horas), sorteado entre 6, 8 ou 12 horas.  
+**DOSAGE_TIMING_PERIOD_UNIT**: Unidade do período de administração (fixado como "horas").  
+**THERAPY_DURATION**: Duração do tratamento em dias, sorteada entre 3 e 12 dias.  
+**THERAPY_DURATION_UNIT**: Unidade da duração do tratamento (fixado como "dias").  
+**ADMISSION_ID**: Identificador único de internação, atribuído sequencialmente (1 a 2400).  
+**MICROORGANISM_ID**: Microorganismo identificado, sorteado aleatoriamente da tabela `microorganismos_especies$Nome`.  
+**codigo_procedimento**: Código do procedimento realizado, sorteado aleatoriamente a partir da tabela `procedimentos_tuss`.  
+
+Variáveis Derivadas:
+
+**THERAPY_START_MONTH e THERAPY_START_WEEK**: Mês e semana de início do tratamento, calculados a partir de `THERAPY_START_DATE`.  
+**DOSAGE_TIMING_FREQUENCY**: Frequência diária de administração diária do medicamento.  
+**THERAPY_END_DATE**: Data de término do tratamento, calculada somando a duração ao início do tratamento.  
+**THERAPY_END_MONTH e THERAPY_END_WEEK**: Mês e semana de término do tratamento, calculados a partir de `THERAPY_END_DATE`.  
+**ADM_START_DATE**: Data de admissão ajustada, calculada como a data de início do tratamento menos um valor aleatório entre 0 e 3 dias, com probabilidades desbalanceadas.  
+
+Variáveis integradas de outras tabelas:
+
+**TUSS**: código do procedimento TUSS  
+**procedimento**: Nome do procedimento TUSS  
+**tuss_id_completo**: string em que código e nome do procedimento TUSS são colados em uma única sequência de texto  
+
+```{r}
+
+antimicrob_tbl3 <- data.frame(PATIENT_ID = sample(names_id, 2400),
+                              THERAPY_START_DATE = sample(seq(as.Date("2023-01-10"),as.Date("2023-06-15"), by = "days"), 2400, replace = TRUE),
+                              UNIT_ID = sample(setores_hospitalares$UNIT_ID, 2400, replace = TRUE),
+                              medication_code = sample(1:nrow(antimicrob_tbl2), 2400, replace = TRUE),
+                              PRACTITIONER_ID = sample(practitioner_id, 2400, replace = TRUE),
+                              DOSAGE_TIMING_PERIOD = sample(c(6,8,12), 2400, replace = TRUE),
+                              DOSAGE_TIMING_PERIOD_UNIT = "horas",
+                              THERAPY_DURATION = sample(seq(3,12), 2400, replace = TRUE),
+                              THERAPY_DURATION_UNIT = "dias",
+                              ADMISSION_ID = 1:2400,
+                              MICROORGANISM_ID = sample(microorganismos_especies$Nome, 2400, replace = TRUE),
+                              codigo_procedimento = sample(1:nrow(procedimentos_tuss), 2400, replace = TRUE)) %>%
+
+  mutate(THERAPY_START_MONTH = as.Date(floor_date(THERAPY_START_DATE, unit = "month")),
+         THERAPY_START_WEEK = as.Date(floor_date(THERAPY_START_DATE, unit = "week")),
+         DOSAGE_TIMING_FREQUENCY = 24/DOSAGE_TIMING_PERIOD,
+         THERAPY_END_DATE = THERAPY_START_DATE + THERAPY_DURATION,
+         THERAPY_END_MONTH = as.Date(floor_date(THERAPY_END_DATE, unit = "month")),
+         THERAPY_END_WEEK = as.Date(floor_date(THERAPY_END_DATE, unit = "week")),
+         ADM_START_DATE = THERAPY_START_DATE - sample(c(0,1,2,3),2400,prob = c(0.6,0.2,0.1,0.1),replace = TRUE)
+  ) %>%
+  left_join(procedimentos_tuss, by = c("codigo_procedimento")) %>%
+  select(-codigo_procedimento)
+
+```
+
+Este trecho de código cria um dataset que simula trocas de medicação para 10% dos pacientes incluídos na tabela inicial de tratamentos de antimicrobianos. A lógica implementa uma alteração na terapia inicial ao atribuir um novo medicamento, com início logo após o término do tratamento anterior, e uma nova duração de terapia.
+
+O código gera uma nova tabela (`antimicrob_change_tbl`) onde:  
+- A data de início da nova terapia (`THERAPY_START_DATE`) ocorre um dia após o término da terapia anterior.
+
+São atribuídos:
+
+- Um novo código de medicamento (`medication_code`).  
+- Uma nova duração de tratamento, sorteada entre 2 e 6 dias.  
+- Variáveis temporais relacionadas ao início e término do tratamento são recalculadas:  
+- Mês e semana de início (`THERAPY_START_MONTH`, `THERAPY_START_WEEK`).  
+- Data de término (`THERAPY_END_DATE`).  
+- Mês e semana de término (`THERAPY_END_MONTH`, `THERAPY_END_WEEK`).  
+
+```{r}
+p_add = 0.1
+p_mudanca = nrow(antimicrob_tbl3)*0.1
+
+antimicrob_change_tbl <- antimicrob_tbl3[sample(1:nrow(antimicrob_tbl3), p_mudanca, replace = FALSE),] %>%
+  mutate(THERAPY_START_DATE = THERAPY_END_DATE + 1,
+         THERAPY_START_MONTH = as.Date(floor_date(THERAPY_START_DATE, unit = "month")),
+         THERAPY_START_WEEK = as.Date(floor_date(THERAPY_START_DATE, unit = "week")),
+         THERAPY_DURATION = sample(seq(2,6), p_mudanca, replace = TRUE),
+         medication_code = sample(1:nrow(antimicrob_tbl2), p_mudanca, replace = TRUE),
+         THERAPY_END_DATE = THERAPY_START_DATE + THERAPY_DURATION,
+         THERAPY_END_MONTH = as.Date(floor_date(THERAPY_END_DATE, unit = "month")),
+         THERAPY_END_WEEK = as.Date(floor_date(THERAPY_END_DATE, unit = "week")))
+```
+
+Em seguida, são sorteados aleatoriamente dias adicionais de internação do paciente mesmo após o final do tratamento com antimicrobiano.   
+Para cada internação, são sorteados 0, 1 ou 2 dias adicionais, com probabilidades de 80%, 10% e 10%, respectivamente.
+
+```{r}
+END_ADD_DAYS <- antimicrob_tbl3 %>% dplyr::select(ADMISSION_ID) %>%
+  group_by(ADMISSION_ID) %>%
+  mutate(add = 0) %>%
+  ungroup() %>%
+  mutate(add = sample(c(0,1,2),2400,prob = c(0.8,0.1,0.1),replace = TRUE))
+```
+
+O próximo código integra diferentes tabelas relacionadas a prontuários médicos, tratamentos antimicrobianos, setores hospitalares e medicamentos. A tabela final resultante, `antimicrob_tbl_final`, fornece uma visão consolidada das hospitalizações, unindo informações temporais, clínicas e financeiras. A tabela também calcula métricas adicionais relacionadas à administração de medicamentos e ao custo total do tratamento.
+
+Variáveis de admissão:
+
+**ADM_START_DATE**: Data inicial da admissão, calculada como o menor valor de `THERAPY_START_DATE` por hospitalização, por internação (`ADMISSION_ID`)  
+**ADM_END_DATE**: Data final ajustada, calculada como o maior valor de `THERAPY_END_DATE` somado ao parâmetro add, por internação (`ADMISSION_ID`)  
+**ADMISSION_DURATION**: Duração total da admissão, em dias, obtida pela diferença entre `ADM_END_DATE` e `ADM_START_DATE`, por internação (`ADMISSION_ID`)  
+
+Variáveis temporais:
+
+**ADM_START_MONTH, ADM_START_WEEK**: Mês e semana da data inicial da admissão.  
+**ADM_END_MONTH, ADM_END_WEEK**: Mês e semana da data final da admissão.  
+
+Variáveis de medicação geradas:
+
+**DD**: Dose diária (em gramas). Multiplica a dosagem de cada dose com a frequência diária de doses.  
+**TOTAL_COST**: Custo total do tratamento. Multiplica a frequência diária do doses, duração do tratamento e custo por dose.  
+
+```{r}
+antimicrob_tbl_final <- antimicrob_tbl3 %>%
+  bind_rows(antimicrob_change_tbl) %>%
+  group_by(ADMISSION_ID) %>%
+  mutate(ADM_START_DATE = min(ADM_START_DATE),
+         ADM_END_DATE = max(THERAPY_END_DATE)
+  ) %>%
+  ungroup() %>%
+  left_join(END_ADD_DAYS, by = "ADMISSION_ID") %>%
+  mutate(ADM_START_MONTH =  as.Date(floor_date(ADM_START_DATE, unit = "month")),
+         ADM_START_WEEK =  as.Date(floor_date(ADM_START_DATE, unit = "week")),
+         ADM_END_DATE = ADM_END_DATE + add,
+         ADM_END_MONTH =  as.Date(floor_date(ADM_END_DATE, unit = "month")),
+         ADM_END_WEEK =  as.Date(floor_date(ADM_END_DATE, unit = "week")),
+         ADMISSION_DURATION = as.numeric(ADM_END_DATE - ADM_START_DATE)) %>%
+  left_join(setores_hospitalares %>% dplyr::select(UNIT_ID, DESCRIPTION), by = c("UNIT_ID")) %>%
+  left_join(antimicrob_tbl2, by = "medication_code") %>%
+  dplyr::select(ADMISSION_ID, UNIT_ID, DESCRIPTION, PATIENT_ID, PRACTITIONER_ID, ADM_START_DATE, ADM_START_MONTH, ADM_START_WEEK,
+         THERAPY_START_DATE, THERAPY_START_MONTH, THERAPY_START_WEEK, THERAPY_END_DATE, THERAPY_END_MONTH, THERAPY_END_WEEK,
+         ADM_END_DATE, ADM_END_MONTH, ADM_END_WEEK, ADMISSION_DURATION,
+         DOSAGE_TIMING_FREQUENCY, DOSAGE_TIMING_PERIOD, DOSAGE_TIMING_PERIOD_UNIT,
+         THERAPY_DURATION, THERAPY_DURATION_UNIT, MICROORGANISM_ID, MEDICATION_CLASS_CODE, MEDICATION_NAME, Class,
+         DOSAGE_VALUE_G, DDD_OMS, medication_price, TUSS, Procedimento, tuss_id_completo) %>%
+  mutate(DD = DOSAGE_VALUE_G * DOSAGE_TIMING_FREQUENCY,
+         TOTAL_COST = DOSAGE_TIMING_FREQUENCY * THERAPY_DURATION * medication_price)
+```
+
+Salvar tabelas em csv.  
+
+O arquivo `antimicrob_tbl_codes.csv` lista o nome de cada medicamento e o código do medicamento, dentro dos medicamentos presentes na tabela de prontuários artificial.
+
+```{r}
+fwrite(antimicrob_tbl_final, file = "data/antimicrob_tbl.csv")
+fwrite(antimicrob_tbl %>% dplyr::select(MEDICATION_NAME, MEDICATION_CLASS_CODE), file = "data/antimicrob_tbl_codes.csv")
+```
+
+# 5. Aceitabilidade de intervenções farmacêuticas
+
+Este código simula a criação de uma tabela aceitabilidade_tbl que contém informações sobre a adesão de pacientes e médicos a alertas relacionados a tratamentos antimicrobianos. A tabela inclui dados sobre a aceitação de alertas, implementação das modificações e os custos evitados com a implementação, permitindo análises de eficiência e adesão a protocolos médicos.
+
+Esta tabela é 
+
+Geração de Dados Aleatórios:
+
+**PATIENT_ID**: Identificador do paciente, sorteado aleatoriamente.  
+**PRACTITIONER_ID**: Identificador do médico prescritor, sorteado aleatoriamente.  
+**UNIT_ID**: Código do setor hospitalar, sorteado aleatoriamente.  
+**ALERT_DATE**: Data da geração do alerta, definida entre janeiro e dezembro de 2023, com uma distribuição de datas específicas.  
+**ALERT_ADHERENCE**: Registro de adesão ao alerta (`TRUE` ou `FALSE`), sorteado com uma probabilidade de 70% de adesão.  
+**USER_ID**: Identificador do usuário que realizou a ação de aceite ou rejeição, sorteado aleatoriamente a partir de practitioner_id.  
+**COST**: Custo associado ao tratamento, sem intervenção, sorteado aleatoriamente com valores entre 100 e 1000.  
+**THERAPY_DURATION**: Duração da terapia, sorteada entre 8 e 12 dias.  
+**medication_code**: Código de medicação, sorteado a partir de uma tabela de medicamentos disponíveis.  
+
+Cálculos e Mutação de Colunas:
+
+**ALERT_ADHERENCE_DATE**: Data de modificação do alerta (encerramento), calculada como um tempo aleatório, ajustado a partir da `ALERT_DATE`.  
+**IMPLEMENTATION_ADHERENCE**: Indica se a implementação foi realizada após o aceite do alerta (`TRUE` ou `FALSE`), definida somente quando `ALERT_ADHERENCE` é `TRUE`.  
+**ALERT_IMPLEMENTATION_DATE**: Data de implementação do alerta, gerada com um pequeno ajuste aleatório a partir de `ALERT_ADHERENCE_DATE`.  
+**ALERT_WEEK e ALERT_MONTH**: Semana e mês do `ALERT_DATE`, calculados utilizando a função `floor_date()`.  
+**SAVING_COST**: Custo evitado por cada implementação aceita, calculado aplicando uma redução aleatória de 10%, 30% ou 50% ao custo original.  
+**EFFECTIVE_COST**: Custo efetivo do tratamento, que leva em consideração o custo evitado caso a implementação tenha ocorrido (isto é, caso `IMPLEMENTATION_ADHERENCE` seja `TRUE`) ou o custo original caso não tenha sido implementada (`IMPLEMENTATION_ADHERENCE` igual a `FALSE`).  
+**THERAPY_DURATION**: Duração da terapia ajustada caso a implementação tenha sido realizada, reduzida em 20%, 40% ou 60%.  
+**IMPLEMENTATION_WEEK e IMPLEMENTATION_MONTH**: Semana e mês da `ALERT_IMPLEMENTATION_DATE`, calculados utilizando a função `floor_date()`.  
+
+Junção de Tabelas:
+
+Junção com outras tabelas:
+- `setores_hospitalares`: Junta a tabela de setores hospitalares para adicionar a descrição do setor (campo `DESCRIPTION`).  
+- `antimicrob_tbl2`: Junta a tabela de medicamentos para incluir o nome do medicamento (campo `MEDICATION_NAME`).
+
+Ajustes para Alertas Não Aceitos:
+
+Para os registros onde `ALERT_ADHERENCE` é `FALSE`, as colunas `ALERT_IMPLEMENTATION_DATE`, `IMPLEMENTATION_WEEK` e `IMPLEMENTATION_MONTH` são definidas como `NA`, indicando que a implementação não ocorreu.
+
+```{r}
+custos <- seq(100,1000, by= 100)
+
+aceitabilidade_tbl <- data.frame(PATIENT_ID = sample(names_id, 2400),
+                                 PRACTITIONER_ID = sample(practitioner_id, 2400, replace = TRUE),
+                                 UNIT_ID = sample(setores_hospitalares$UNIT_ID, 2400, replace = TRUE),
+                                 ALERT_DATE = ISOdate(2023, 1:12, rep(1:20, each = 10*12), 11, 00, 0) - 28800,
+                                 ALERT_ADHERENCE = sample(c(TRUE, FALSE), 2400, prob = c(0.7, 0.3), replace = TRUE),
+                                 USER_ID = sample(practitioner_id, 2400, replace = TRUE),
+                                 COST = sample(custos, 2400, replace = TRUE),
+                                 THERAPY_DURATION = sample(seq(8,12), 2400, replace = TRUE),
+                                 medication_code = sample(1:nrow(antimicrob_tbl2), 2400, replace = TRUE)) %>%
+  mutate(ALERT_ADHERENCE_DATE = ALERT_DATE + (rep(c(13,10,8,9,5,7,6,5,3,2,4,1)*60*3, each = 200) + round(rnorm(2400, sd = 10),0))*60,
+         IMPLEMENTATION_ADHERENCE = sample(c(TRUE, FALSE), 2400, replace = TRUE) & ALERT_ADHERENCE,
+         ALERT_IMPLEMENTATION_DATE = ALERT_ADHERENCE_DATE,
+         ALERT_IMPLEMENTATION_DATE = ALERT_IMPLEMENTATION_DATE + abs(round(rnorm(2400, sd = 10),0)*60*60),
+         ALERT_WEEK = as.Date(floor_date(ALERT_DATE, unit = "week")),
+         ALERT_MONTH = as.Date(floor_date(ALERT_DATE, unit = "month")),
+         # Reducao do custo caso implementacao ocorra
+         SAVING_COST = COST*sample(c(0.9, 0.7, 0.5)),
+         EFFECTIVE_COST = ifelse(IMPLEMENTATION_ADHERENCE, SAVING_COST, COST),
+         THERAPY_DURATION = ifelse(IMPLEMENTATION_ADHERENCE, round(THERAPY_DURATION*sample(c(0.8, 0.6, 0.4)), 0),THERAPY_DURATION),
+         IMPLEMENTATION_WEEK = as.Date(floor_date(ALERT_IMPLEMENTATION_DATE, unit = "week")),
+         IMPLEMENTATION_MONTH = as.Date(floor_date(ALERT_IMPLEMENTATION_DATE, unit = "month"))) %>%
+  left_join(setores_hospitalares %>% dplyr::select(UNIT_ID, DESCRIPTION), by = c("UNIT_ID")) %>%
+  left_join(antimicrob_tbl2 %>% dplyr::select(MEDICATION_NAME, medication_code),
+            by = "medication_code") %>%
+  dplyr::select(-medication_code)
+
+aceitabilidade_tbl[!aceitabilidade_tbl$ALERT_ADHERENCE,"ALERT_IMPLEMENTATION_DATE"] <- NA
+aceitabilidade_tbl[!aceitabilidade_tbl$ALERT_ADHERENCE,"IMPLEMENTATION_WEEK"] <- NA
+aceitabilidade_tbl[!aceitabilidade_tbl$ALERT_ADHERENCE,"IMPLEMENTATION_MONTH"] <- NA
+```
+
+Exportar tabela em .csv:
+
+```{r}
+fwrite(aceitabilidade_tbl, file = "data/aceitabilidade_tbl.csv")
+```
