@@ -1060,46 +1060,6 @@ ui <- shiny::conditionalPanel(
 
 # Definindo o servidor
 server <- function(input, output, session) {
-
-### Carregando dados
-
-  #PRD 1
-  # gestao_isolamento_tbl_csv <- read.csv(file = "data/gestao_isolamento_tbl.csv")
-  # setores_hospitalares <- read.csv("data/setor_hospitalar.csv")
-  # 
-  # aceitabilidade_tbl <- read_csv(file = "data/aceitabilidade_tbl.csv")
-  # 
-  # aceitabilidade_date_range <- range(c(range(aceitabilidade_tbl$ALERT_DATE, na.rm = TRUE),
-  #                                      range(aceitabilidade_tbl$ALERT_ADHERENCE_DATE, na.rm = TRUE)))
-  # 
-  # gestao_isolamento_tbl <- gestao_isolamento_tbl_csv %>%
-  #   mutate(
-  #     ADMISSION_DATE = as.POSIXct(ADMISSION_DATE, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
-  #     collection_date_time = as.POSIXct(collection_date_time, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
-  #     result_status_date_time = as.POSIXct(result_status_date_time, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
-  #     RELEASE_DATE = as.POSIXct(RELEASE_DATE, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
-  #     dif = as.numeric(difftime(result_status_date_time, collection_date_time, units = "hours")),
-  #     month = as.Date(floor_date(collection_date_time, unit = "month"))) %>%
-  #   left_join(setores_hospitalares,  by = "UNIT_ID")
-  # 
-  # gestao_isolamento_setores_list <- c("Todos", sort(unique(gestao_isolamento_tbl$DESCRIPTION)))
-  # 
-  # gestao_isolamento_range <- as.Date(range(c(range(gestao_isolamento_tbl$ADMISSION_DATE),
-  #                              range(gestao_isolamento_tbl$collection_date_time),
-  #                              range(gestao_isolamento_tbl$result_status_date_time),
-  #                              range(gestao_isolamento_tbl$RELEASE_DATE))))
-  
-  #PRD 2
-  
-  # antimicrob_tbl_final <- read_csv(file = "data/antimicrob_tbl.csv")
-  # 
-  # antimicrob_tbl_codes <- read.csv(file = "data/antimicrob_tbl_codes.csv")
-  # 
-  # antimicrob_date_range <- range(antimicrob_tbl_final$THERAPY_START_DATE, na.rm = TRUE)
-  # 
-  # antimicrob_setores_list <- sort(unique(antimicrob_tbl_final$DESCRIPTION))
-  
-  # PRD 4
   
 # #### Carregando os Modulos do Server ####
 
@@ -1599,6 +1559,96 @@ server <- function(input, output, session) {
     filter(Horas_res == max(Horas_res, na.rm = TRUE)) %>%
     select(Horas_res) %>%
     mutate(Horas_res = Horas_res*1.2)
+  
+  
+  saving_giro_tbl <- reactive({ 
+    
+    if(nrow(gi_tbl_prev())== 0) {
+      data.frame()
+    } else {
+      gi_tbl_prev() %>%
+        filter(ISOLATED == "Sim") %>%
+        mutate(occupation_hours = as.numeric(difftime(result_status_date_time, ADMISSION_DATE, units = "hours")),
+               occupation_days = (occupation_hours %/% 24) + 1,
+               saving_days_release = mean_isolation_time - occupation_days,
+               saving_cost = saving_days_release * bed_cost_per_day)
+    }
+  })
+  
+  # Diferença máxima de tempo na gestão de isolamento (para limite do eixo y)
+  max_dif_isolamento_sc <- reactive({ 
+    
+    if(nrow(saving_giro_tbl())>0) {  
+      
+      saving_giro_tbl() %>%
+        group_by(month) %>%
+        reframe(saving_cost = sum(saving_cost, na.rm = TRUE)) |>
+        ungroup() %>%
+        filter(saving_cost == max(saving_cost, na.rm = TRUE)) %>%
+        select(saving_cost) %>%
+        mutate(max_saving_cost = saving_cost*1.2)
+      
+    } else {
+      
+      data.frame(max_saving_cost = 100)
+      
+    }
+  })
+  
+  output$saving_giro_total_value <- renderText({
+    
+    if(nrow(saving_giro_tbl())==0) {
+      sgtvalue <- format_currency_br(0)
+    } else {
+      sgtvalue <- format_currency_br(sum(saving_giro_tbl()$saving_cost, na.rm = TRUE))
+    }
+    sgtvalue
+  })
+  
+  # Taxa de Rotatividade
+  saving_giro_tx_rot_tbl <- reactive({ 
+    gi_tbl_prev() %>%
+      filter(ISOLATED == "Sim") %>%
+      mutate(RELEASE_DATE = as.Date(RELEASE_DATE)) %>%
+      filter(RELEASE_DATE >= filter_gi$gestao_isolamento_data[1] &
+               RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
+      left_join(bed_availability_tbl, by = c("RELEASE_DATE" = "bed_date")) %>%
+      reframe(tx_rotatividade = n()/mean(bed_n, na.rm = T))
+  })
+  
+  output$saving_giro_tx_rotatividade_value <- renderText({
+    
+    if(nrow(gi_tbl_prev())==0) {
+      sgtx_result <- "0"
+    } else {
+      tx_giro_value <- round(saving_giro_tx_rot_tbl()$tx_rotatividade,1)*100
+      sgtx_result <- format(tx_giro_value, decimal.mark = ",", big.mark = ".", nsmall = 1)
+    }
+    sgtx_result
+  })
+  
+  tm_ocupacao_leito_tbl <- reactive({ 
+    gi_tbl_prev() %>%
+      # Considera somente pacientes que internaram dentro do período selecionado
+      filter(RELEASE_DATE >= filter_gi$gestao_isolamento_data[1]) %>%
+      # Considera somente pacientes que receberam alta até o período selecionado
+      filter(RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
+      # Considera somente pacientes que estavam isolados, e foram liberados
+      filter(ISOLATED == "Sim") %>%
+      reframe(tm_ocupacao_leito = sum(bed_occupation_days, na.rm = T)/n())
+  })
+  
+  output$saving_tm_ocupacao_leito_value <- renderText({
+    
+    if(nrow(gi_tbl_prev())==0) {
+      sgtmvlue <- ""
+    } else {
+      tm_value <- round(tm_ocupacao_leito_tbl()$tm_ocupacao_leito,1)
+      tm_value_format <- format(tm_value, decimal.mark = ",", big.mark = ".", nsmall = 1)
+      sgtmvlue <- paste(tm_value_format, "dias")
+    }
+    sgtmvlue
+  })
   
   output$gi_dif_amostra_result_plot_month <- renderPlotly({
     
@@ -5810,214 +5860,6 @@ output$atb_cost_sector_plot <- renderPlotly({
     ggplotly(plot_atb_cost2, tooltip = "text")
   }
 })
-
-# PRD 6
-
-saving_giro_tbl <- reactive({ 
-  
-  if(nrow(gi_tbl_prev())== 0) {
-    data.frame()
-  } else {
-  gi_tbl_prev() %>%
-    filter(ISOLATED == "Sim") %>%
-    mutate(occupation_hours = as.numeric(difftime(result_status_date_time, ADMISSION_DATE, units = "hours")),
-           occupation_days = (occupation_hours %/% 24) + 1,
-           saving_days_release = mean_isolation_time - occupation_days,
-           saving_cost = saving_days_release * bed_cost_per_day)
-  }
-})
-
-# Diferença máxima de tempo na gestão de isolamento (para limite do eixo y)
-max_dif_isolamento_sc <- reactive({ 
-
-  if(nrow(saving_giro_tbl())>0) {  
-    
-  saving_giro_tbl() %>%
-  group_by(month) %>%
-  reframe(saving_cost = sum(saving_cost, na.rm = TRUE)) |>
-  ungroup() %>%
-  filter(saving_cost == max(saving_cost, na.rm = TRUE)) %>%
-  select(saving_cost) %>%
-  mutate(max_saving_cost = saving_cost*1.2)
-    
-  } else {
-  
-    data.frame(max_saving_cost = 100)
-    
-  }
-})
-
-output$saving_giro_total_value <- renderText({
-  
-  if(nrow(saving_giro_tbl())==0) {
-    sgtvalue <- format_currency_br(0)
-  } else {
-    sgtvalue <- format_currency_br(sum(saving_giro_tbl()$saving_cost, na.rm = TRUE))
-  }
-  sgtvalue
-})
-
-# Taxa de Rotatividade
-saving_giro_tx_rot_tbl <- reactive({ 
-  gi_tbl_prev() %>%
-    filter(ISOLATED == "Sim") %>%
-    mutate(RELEASE_DATE = as.Date(RELEASE_DATE)) %>%
-    filter(RELEASE_DATE >= filter_gi$gestao_isolamento_data[1] &
-             RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
-    left_join(bed_availability_tbl, by = c("RELEASE_DATE" = "bed_date")) %>%
-    reframe(tx_rotatividade = n()/mean(bed_n, na.rm = T))
-})
-
-output$saving_giro_tx_rotatividade_value <- renderText({
-
-  if(nrow(gi_tbl_prev())==0) {
-    sgtx_result <- "0"
-  } else {
-    tx_giro_value <- round(saving_giro_tx_rot_tbl()$tx_rotatividade,1)*100
-    sgtx_result <- format(tx_giro_value, decimal.mark = ",", big.mark = ".", nsmall = 1)
-  }
-  sgtx_result
-})
-
-tm_ocupacao_leito_tbl <- reactive({ 
-  gi_tbl_prev() %>%
-    # Considera somente pacientes que internaram dentro do período selecionado
-    filter(RELEASE_DATE >= filter_gi$gestao_isolamento_data[1]) %>%
-    # Considera somente pacientes que receberam alta até o período selecionado
-    filter(RELEASE_DATE <= filter_gi$gestao_isolamento_data[2]) %>%
-    # Considera somente pacientes que estavam isolados, e foram liberados
-    filter(ISOLATED == "Sim") %>%
-    reframe(tm_ocupacao_leito = sum(bed_occupation_days, na.rm = T)/n())
-})
-
-output$saving_tm_ocupacao_leito_value <- renderText({
-  
-  if(nrow(gi_tbl_prev())==0) {
-    sgtmvlue <- ""
-  } else {
-    tm_value <- round(tm_ocupacao_leito_tbl()$tm_ocupacao_leito,1)
-    tm_value_format <- format(tm_value, decimal.mark = ",", big.mark = ".", nsmall = 1)
-    sgtmvlue <- paste(tm_value_format, "dias")
-  }
-  sgtmvlue
-})
-
-# output$tm_ocupacao_leito_plot <- renderPlotly({
-#   
-#   if(input$plot_gitm_time_setting == 'Mensal') {
-#   
-#     sitm_month_tbl <- gi_tbl_prev() %>%
-#       # Considera somente pacientes que internaram dentro do período selecionado
-#       filter(ADMISSION_DATE >= gestao_isolamento_range[1]) %>%
-#       # Considera somente pacientes que receberam alta até o período selecionado
-#       filter(RELEASE_DATE <= gestao_isolamento_range[2]) %>%
-#       # Considera somente pacientes que estavam isolados, e foram liberados
-#       filter(ISOLATED == "Sim") %>%
-#       # COnsidera o mês de entrada do paciente
-#       mutate(month = as.Date(floor_date(ADMISSION_DATE, unit = 'month'))) %>%
-#       group_by(month) %>%
-#       reframe(tm_ocupacao_leito = round(sum(bed_occupation_days, na.rm = T)/n(),2))
-#     
-#     if(nrow(sitm_month_tbl)==0) {
-#       
-#       dataset_gitm_ggplot <- data.frame(month = seq(x_range_gi_month()[1],
-#                                                     x_range_gi_month()[2], 
-#                                                     by = 'month'),
-#                                         tm_ocupacao_leito = 0)
-#     } else {
-#       
-#       dataset_gitm_ggplot <- sitm_month_tbl %>%
-#         complete(month = seq(x_range_gi_month()[1],
-#                              x_range_gi_month()[2], 
-#                              by = 'month'),
-#                  fill = list(tm_ocupacao_leito = 0))
-#       
-#     }
-#     
-#     max_gitm_value <- max(sitm_month_tbl$tm_ocupacao_leito, na.rm = T)
-#     max_y_gitm <- ifelse(max_gitm_value < 1, 1, max_gitm_value*1.1)
-#     
-#     pgitm <- dataset_gitm_ggplot %>%
-#       ggplot(aes(x = month, y = tm_ocupacao_leito)) +
-#       ylab("Média de dias de ocupação do leito") +
-#       xlab("Mês de entrada do paciente") +
-#       theme_minimal() +
-#       scale_y_continuous(labels = function(x) format(x, decimal.mark = ",", scientific = FALSE),
-#                          expand = c(0, 0), limits = c(0,max_y_gitm)) +
-#       scale_x_date(breaks = "month", date_labels = "%b %Y") +
-#       theme(plot.title = element_text(hjust = 0.5),
-#             axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
-#             axis.line = element_line(),
-#             plot.margin = unit(c(0.2, 0.2, 0.2, 0.2), "inches"))
-#     
-#     if(sum(dataset_gitm_ggplot$tm_ocupacao_leito, na.rm = TRUE) > 0) {
-#       pgitm <- pgitm +
-#         geom_line(color = '#0667B5') +
-#         geom_point(aes(text = paste0(str_to_title(format(month, format = "%B %Y")),
-#                                      '<br>Tempo Médio: ', format(tm_ocupacao_leito, decimal.mark = ","), " dias")),
-#                    color = '#0667B5')
-#     }  
-#     
-#     # Se for semanal
-#   } else {
-#     
-#     sitm_week_tbl <-  gi_tbl_prev()  %>%
-#       # Considera somente pacientes que internaram dentro do período selecionado
-#       filter(ADMISSION_DATE >= gestao_isolamento_range[1]) %>%
-#       # Considera somente pacientes que receberam alta até o período selecionado
-#       filter(RELEASE_DATE <= gestao_isolamento_range[2]) %>%
-#       # Considera somente pacientes que estavam isolados, e foram liberados
-#       filter(ISOLATED == "Sim") %>%
-#       # COnsidera o mês de entrada do paciente
-#       mutate(week = as.Date(floor_date(ADMISSION_DATE, unit = 'week'))) %>%
-#       group_by(week) %>%
-#       reframe(tm_ocupacao_leito = round(sum(bed_occupation_days, na.rm = T)/n(),2))
-#     
-#     if(nrow(sitm_week_tbl)==0) {
-#       
-#       dataset_trm_week_ggplot <- data.frame(week = seq(x_range_gi_week()[1],
-#                                                        x_range_gi_week()[2],
-#                                                        by = 'week'),
-#                                             tm_ocupacao_leito = 0)
-#       
-#     } else {
-#       
-#       dataset_trm_week_ggplot <- sitm_week_tbl %>%
-#         complete(week = seq(x_range_gi_week()[1],
-#                             x_range_gi_week()[2],
-#                             by = 'week'),
-#                  fill = list(tm_ocupacao_leito = 0))
-#       
-#     }
-#     
-#     max_tmw_value <- max(sitm_week_tbl$tm_ocupacao_leito, na.rm = T)
-#     max_y_ptmw <- ifelse(max_tmw_value < 1, 1, max_tmw_value*1.1)
-#     
-#     pgitm <- dataset_trm_week_ggplot %>%
-#       ggplot(aes(x = week, y = tm_ocupacao_leito)) +
-#       xlab("Semana de entrada do paciente") +
-#       ylab("Média de dias de ocupação do leito") +
-#       theme_minimal() +
-#       scale_y_continuous(labels = function(x) format(x, decimal.mark = ",", scientific = FALSE),
-#                          expand = c(0, 0), limits = c(0,max_y_ptmw)) +
-#       scale_x_date(date_breaks = "2 weeks", date_labels = "%d %b %Y") +
-#       theme(plot.title = element_text(hjust = 0.5),
-#             axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
-#             axis.line = element_line(),
-#             plot.margin = unit(c(0.2, 0.2, 0.2, 0.2), "inches"))
-#     
-#     if(sum(dataset_trm_week_ggplot$tm_ocupacao_leito, na.rm = TRUE) > 0) {
-#       pgitm <- pgitm +
-#         geom_line(color = '#0667B5') +
-#         geom_point(aes(text = paste0(str_to_title(format(week, format = "%d %b %Y")),
-#                                      '<br>Tempo Médio: ', format(tm_ocupacao_leito, decimal.mark = ","), " dias")),
-#                    color = '#0667B5')
-#     }
-#     
-#   }
-#   ggplotly(pgitm, tooltip = 'text')
-#   
-# })
 
 }
 
